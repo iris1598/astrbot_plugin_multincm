@@ -1,6 +1,6 @@
 # astrbot_plugin_multincm
 
-AstrBot 网易云多选点歌插件，移植自 [nonebot-plugin-multincm](https://github.com/lgc-NB2Dev/nonebot-plugin-multincm)。
+AstrBot 网易云多选点歌插件，移植自 [nonebot-plugin-multincm]。
 
 ## ✨ 功能特性
 
@@ -111,6 +111,6 @@ MIT License
 
 ## 🙏 致谢
 
-- [nonebot-plugin-multincm](https://github.com/lgc-NB2Dev/nonebot-plugin-multincm) - 原始 NoneBot 插件
-- [pyncm](https://github.com/mos9527/pyncm) - 网易云音乐 API 库
-- [AstrBot](https://github.com/AstrBotDevs/AstrBot) - AstrBot 框架
+- [nonebot-plugin-multincm] - 原始 NoneBot 插件
+- [pyncm] - 网易云音乐 API 库
+- [AstrBot] - AstrBot 框架
