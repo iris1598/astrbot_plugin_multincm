@@ -60,10 +60,15 @@ async def cookie_login(music_u: str):
     if ret is None:
         raise LoginFailedException("Cookie 登录返回为空")
     # 处理 result 为 None 的情况
-    if ret.get("result") is None:
+    result = ret.get("result")
+    if result is None:
         raise LoginFailedException(f"Cookie 登录失败: {ret.get('message', 'result 为空')}")
-    if not (c := ret["result"]["content"])["profile"]:
-        raise LoginFailedException(c)
+    content = result.get("content")
+    if content is None:
+        raise LoginFailedException(f"Cookie 登录失败: content 为空")
+    profile = content.get("profile") if isinstance(content, dict) else None
+    if not profile:
+        raise LoginFailedException(f"Cookie 登录失败: profile 为空")
     return ret
 
 
@@ -174,14 +179,19 @@ async def login():
     """主登录入口"""
     config = _get_config()
 
-    if GetCurrentSession().logged_in:
-        logger.info("检测到当前全局 Session 已登录，跳过登录步骤")
-        return
+    try:
+        session = GetCurrentSession()
+        if getattr(session, 'logged_in', False):
+            logger.info("检测到当前全局 Session 已登录，跳过登录步骤")
+            return
+    except Exception as e:
+        logger.warning(f"检查登录状态失败: {e}，继续尝试登录")
 
     try:
         await do_login(anonymous=config.get("anonymous", False))
     except Exception as e:
-        logger.warning(f"登录失败: {e}，尝试游客登录")
+        import traceback
+        logger.warning(f"登录失败: {e}，尝试游客登录\n{traceback.format_exc()}")
         try:
             await do_login(anonymous=True)
         except Exception as e2:
