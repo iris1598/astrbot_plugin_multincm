@@ -176,14 +176,35 @@ async def do_login(anonymous: bool = False):
         logger.info("游客登录成功")
     else:
         session = GetCurrentSession()
+
+        # 登录成功后，主动填充 session 的 login_info（pyncm 的部分登录方式不会自动设置）
+        try:
+            login_status = await ncm_request(GetCurrentLoginStatus)
+            if login_status and HAS_WRITE_LOGIN:
+                WriteLoginInfo(login_status)
+        except Exception as e:
+            logger.debug(f"获取登录状态失败（非致命）: {e}")
+
         _DATA_DIR.mkdir(parents=True, exist_ok=True)
         SESSION_FILE_PATH.write_text(DumpSessionAsString(session), "u8")
+
+        # 多级回退提取用户信息：login_info → session 属性
+        nickname = "未知用户"
+        uid = "未知"
         try:
-            nickname = session.login_info.get("content", {}).get("profile", {}).get("nickname", "未知用户") if session.login_info else "未知用户"
-            uid = getattr(session, 'uid', '未知')
+            # 优先从 login_info 字典提取
+            if session.login_info:
+                profile = session.login_info.get("content", {}).get("profile", {})
+                if profile:
+                    nickname = profile.get("nickname", nickname)
+                    uid = str(profile.get("userId", uid))
+            # 回退到 session 属性（pyncm 部分版本会自动设置）
+            if nickname == "未知用户" and hasattr(session, "nickname"):
+                nickname = session.nickname or nickname
+            if uid == "未知" and hasattr(session, "uid"):
+                uid = str(session.uid) if session.uid else uid
         except Exception:
-            nickname = "未知用户"
-            uid = "未知"
+            pass
         logger.info(f"登录成功，欢迎您，{nickname} [{uid}]")
 
 
