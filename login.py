@@ -151,12 +151,12 @@ async def do_login(anonymous: bool = False):
         await anonymous_login()
 
     if anonymous:
-        logger.success("游客登录成功")
+        logger.info("游客登录成功")
     else:
         session = GetCurrentSession()
         _DATA_DIR.mkdir(parents=True, exist_ok=True)
         SESSION_FILE_PATH.write_text(DumpSessionAsString(session), "u8")
-        logger.success(f"登录成功，欢迎您，{session.nickname} [{session.uid}]")
+        logger.info(f"登录成功，欢迎您，{session.nickname} [{session.uid}]")
 
 
 async def login():
