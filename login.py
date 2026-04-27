@@ -172,7 +172,13 @@ async def do_login(anonymous: bool = False):
         session = GetCurrentSession()
         _DATA_DIR.mkdir(parents=True, exist_ok=True)
         SESSION_FILE_PATH.write_text(DumpSessionAsString(session), "u8")
-        logger.info(f"登录成功，欢迎您，{session.nickname} [{session.uid}]")
+        try:
+            nickname = session.login_info.get("content", {}).get("profile", {}).get("nickname", "未知用户") if session.login_info else "未知用户"
+            uid = getattr(session, 'uid', '未知')
+        except Exception:
+            nickname = "未知用户"
+            uid = "未知"
+        logger.info(f"登录成功，欢迎您，{nickname} [{uid}]")
 
 
 async def login():
