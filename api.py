@@ -61,9 +61,11 @@ async def ncm_request(
     api: Callable[..., Any],
     *args: Any,
     **kwargs: Any,
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     """执行 pyncm API 请求（同步转异步）"""
     ret = await asyncio.to_thread(api, *args, **kwargs)
+    if ret is None:
+        return None
     if ret.get("code", 200) != 200:
         raise NCMResponseError(api.__name__, ret)
     return ret
