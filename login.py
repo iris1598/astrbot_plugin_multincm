@@ -59,6 +59,9 @@ async def cookie_login(music_u: str):
     ret = await asyncio.to_thread(LoginViaCookie, music_u)
     if ret is None:
         raise LoginFailedException("Cookie 登录返回为空")
+    # 处理 result 为 None 的情况
+    if ret.get("result") is None:
+        raise LoginFailedException(f"Cookie 登录失败: {ret.get('message', 'result 为空')}")
     if not (c := ret["result"]["content"])["profile"]:
         raise LoginFailedException(c)
     return ret
@@ -103,6 +106,8 @@ async def anonymous_login():
 async def validate_login() -> bool:
     try:
         ret = await ncm_request(GetCurrentLoginStatus)
+        if ret is None:
+            return False
         ok = bool(ret.get("account"))
         if ok and HAS_WRITE_LOGIN:
             WriteLoginInfo(ret)
