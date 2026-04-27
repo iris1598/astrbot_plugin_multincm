@@ -1,0 +1,68 @@
+{
+    "cookie_music_u": {
+        "description": "网易云 Cookie 中的 MUSIC_U 值（用于登录）",
+        "type": "string",
+        "default": "",
+        "hint": "留空则不使用 Cookie 登录。获取方式：登录网页版网易云音乐，F12 打开开发者工具，在 Cookie 中找到 MUSIC_U 的值"
+    },
+    "phone": {
+        "description": "手机号（用于手机号登录）",
+        "type": "string",
+        "default": "",
+        "hint": "配合密码使用，支持手机号+密码登录"
+    },
+    "email": {
+        "description": "邮箱（用于邮箱登录）",
+        "type": "string",
+        "default": "",
+        "hint": "配合密码使用，支持邮箱+密码登录"
+    },
+    "password": {
+        "description": "登录密码（明文）",
+        "type": "string",
+        "default": "",
+        "hint": "手机号或邮箱登录时的密码"
+    },
+    "anonymous": {
+        "description": "强制游客登录",
+        "type": "bool",
+        "default": false,
+        "hint": "开启后将使用游客身份登录，无法播放 VIP 歌曲"
+    },
+    "list_limit": {
+        "description": "搜索结果每页最大数量",
+        "type": "int",
+        "default": 20,
+        "hint": "设置为 1 则变为单选模式，默认 20（与原项目一致）"
+    },
+    "send_as_file": {
+        "description": "以文件形式发送歌曲（而非语音）",
+        "type": "bool",
+        "default": false,
+        "hint": "开启后发送音频文件而非语音消息"
+    },
+    "auto_resolve": {
+        "description": "自动解析网易云链接",
+        "type": "bool",
+        "default": false,
+        "hint": "开启后当用户发送网易云链接时会自动解析并发送歌曲"
+    },
+    "use_music_card": {
+        "description": "使用音乐卡片发送歌曲（仅支持 QQ 平台）",
+        "type": "bool",
+        "default": false,
+        "hint": "开启后在 QQ 平台将以音乐卡片形式发送歌曲，而非文本+语音。需要配置 card_sign_url"
+    },
+    "card_sign_url": {
+        "description": "音乐卡片签名 API 地址",
+        "type": "string",
+        "default": "https://oiapi.net/api/QQMusicJSONArk/",
+        "hint": "用于生成 QQ 音乐 JSON Ark 卡片的签名 API。默认使用 oiapi.net 公共接口，也可自建"
+    },
+    "ffmpeg_executable": {
+        "description": "FFmpeg 可执行文件路径",
+        "type": "string",
+        "default": "ffmpeg",
+        "hint": "已加入环境变量可不用修改"
+    }
+}
