@@ -130,6 +130,9 @@ async def validate_login() -> bool:
 async def do_login(anonymous: bool = False):
     config = _get_config()
 
+    # 实际是否使用了匿名登录（因为 else 分支可能回退到匿名登录）
+    actual_anonymous = anonymous
+
     if anonymous:
         logger.info("使用游客身份登录")
         await anonymous_login()
@@ -158,7 +161,9 @@ async def do_login(anonymous: bool = False):
                 config.get("password_hash", ""),
             )
         else:
-            logger.warning("手机号登录需要密码，跳过")
+            logger.warning("手机号登录需要密码，使用游客登录")
+            await anonymous_login()
+            actual_anonymous = True
 
     elif config.get("password") and config.get("email"):
         logger.info("使用邮箱与密码登录")
@@ -171,8 +176,9 @@ async def do_login(anonymous: bool = False):
     else:
         logger.info("未配置登录信息，使用游客登录")
         await anonymous_login()
+        actual_anonymous = True
 
-    if anonymous:
+    if actual_anonymous:
         logger.info("游客登录成功")
     else:
         session = GetCurrentSession()
