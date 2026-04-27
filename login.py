@@ -69,6 +69,12 @@ async def cookie_login(music_u: str):
     profile = content.get("profile") if isinstance(content, dict) else None
     if not profile:
         raise LoginFailedException(f"Cookie 登录失败: profile 为空")
+    
+    # 登录成功后，填充 session 的 login_info
+    login_status = await ncm_request(GetCurrentLoginStatus)
+    if login_status and HAS_WRITE_LOGIN:
+        WriteLoginInfo(login_status)
+    
     return ret
 
 
