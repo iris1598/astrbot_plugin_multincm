@@ -45,7 +45,7 @@ from .utils import build_item_link, download_file, format_alias, safe_filename
 _config: dict = {}
 
 # 数据缓存目录
-_CACHE_DIR = Path.cwd() / "data" / "multincm" / "songs"
+_CACHE_DIR = Path.cwd() / "data" / "plugin_data" / "astrbot_plugin_multincm" / "songs"
 
 # URL 解析正则
 URL_REGEX = r"music\.163\.com/(.*?)(?P<type>[a-zA-Z]+)(/?\\?id=|/)(?P<id>[0-9]+)&?"

@@ -42,7 +42,7 @@ except ImportError:
 from astrbot.api import logger
 
 # 数据存储路径
-_DATA_DIR = Path.cwd() / "data" / "multincm"
+_DATA_DIR = Path.cwd() / "data" / "plugin_data" / "astrbot_plugin_multincm"
 SESSION_FILE_PATH = _DATA_DIR / "session.cache"
 
 

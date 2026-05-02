@@ -33,7 +33,7 @@ def _build_font_candidates() -> list[str]:
     try:
         # 尝试常见的 AstrBot 数据目录位置
         for base in [os.getcwd(), os.path.dirname(os.path.dirname(_FONT_DIR))]:
-            data_font = os.path.join(base, "data", "multincm", "fonts", "NotoSansSC-Regular.ttf")
+            data_font = os.path.join(base, "data", "plugin_data", "astrbot_plugin_multincm", "fonts", "NotoSansSC-Regular.ttf")
             if os.path.exists(data_font):
                 candidates.append(data_font)
                 break
