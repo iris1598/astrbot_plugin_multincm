@@ -1,4 +1,4 @@
-# astrbot_plugin_multincm
+# astrbot_plugin_multincm（pyncm删库，已无法使用）
 
 AstrBot 网易云多选点歌插件，移植自 [nonebot-plugin-multincm](https://github.com/lgc-NB2Dev/nonebot-plugin-multincm)。
 
