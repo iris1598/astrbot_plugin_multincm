@@ -48,8 +48,9 @@ _config: dict = {}
 # 数据缓存目录
 _CACHE_DIR = Path.cwd() / "data" / "plugin_data" / "astrbot_plugin_multincm" / "songs"
 
-# URL 解析正则
-URL_REGEX = r"music\.163\.com/(.*?)(?P<type>[a-zA-Z]+)(/?\\?id=|/)(?P<id>[0-9]+)&?"
+# URL 解析正则（支持多种网易云链接格式）
+# 格式: music.163.com/(#/)?(path/)?type?id=xxx 或 music.163.com/(#/)?type/xxx
+URL_REGEX = r"music\.163\.com/(#/)?(.*?)(?P<type>[a-zA-Z]+)(/?\?id=|/)(?P<id>[0-9]+)/?&?"
 SHORT_URL_BASE = "https://163cn.tv"
 SHORT_URL_REGEX = r"163cn\.tv/(?P<suffix>[a-zA-Z0-9]+)"
 
@@ -734,9 +735,9 @@ class Main(Star):
 
     # ==================== 自动解析 ====================
 
-    @filter.regex(r".*music\.163\.com.*")
+    @filter.regex(r".*(music\.163\.com|163cn\.tv)")
     async def handle_auto_resolve(self, event: AstrMessageEvent):
-        """自动解析网易云链接"""
+        """自动解析网易云链接（含短链接）"""
         if not self.auto_resolve:
             return
 
@@ -750,30 +751,42 @@ class Main(Star):
         elif isinstance(result, BasePlaylist):
             info = await result.get_info()
             desc = await info.get_description()
-            yield event.chain_result([Comp.Plain(f"📋 {desc}\n\n发送 解析 [链接] 查看详情")])
+            yield event.chain_result([Comp.Plain(f"📋 {desc}")])
+            session_id = self._get_session_id(event)
+            self.search_sessions[session_id] = SearchSession(
+                searcher=None,
+                song_list=result,
+                message_id=self._get_message_id(event),
+            )
+            # 启动交互会话，允许用户选择子项
+            async for r in self._start_interaction(event):
+                yield r
 
     # ==================== 内部工具 ====================
 
     async def _resolve_from_text(self, text: str) -> GeneralSongOrPlaylist | None:
-        """从文本中解析网易云链接"""
-        # 先尝试短链接
+        """从文本中解析网易云链接（支持短链接、标准链接、分享消息）"""
+        # 先尝试短链接 (163cn.tv)
         m = re.search(SHORT_URL_REGEX, text, re.IGNORECASE)
         if m:
+            suffix = m.group("suffix")
+            short_url = f"{SHORT_URL_BASE}/{suffix}"
             try:
-                suffix = m.group("suffix")
-                async with httpx.AsyncClient() as client:
-                    resp = await client.get(
-                        f"{SHORT_URL_BASE}/{suffix}",
-                        follow_redirects=False,
-                        timeout=5,
-                    )
+                async with httpx.AsyncClient(timeout=10) as client:
+                    resp = await client.get(short_url, follow_redirects=False)
                     if resp.status_code // 100 == 3:
                         location = resp.headers.get("location", "")
-                        text = location or text
-            except Exception:
-                pass
+                        if location:
+                            logger.info(f"短链接 {short_url} 重定向到 {location}")
+                            text = location
+                    else:
+                        logger.warning(f"短链接 {short_url} 返回状态码 {resp.status_code}，非重定向")
+            except Exception as e:
+                logger.warning(f"短链接 {short_url} 解析失败: {e}")
+                # 继续尝试标准链接匹配（可能 text 本身就有 music.163.com）
 
-        # 匹配标准链接
+        # 匹配标准链接（涵盖多种 URL 格式）
+        # 格式: music.163.com/(#/)?(m/)?type?id=xxx 或 music.163.com/(#/)?type/xxx
         m = re.search(URL_REGEX, text, re.IGNORECASE)
         if m:
             link_type = m.group("type")
@@ -781,7 +794,7 @@ class Main(Star):
             try:
                 return await resolve_from_link_params(link_type, link_id)
             except Exception as e:
-                logger.error(f"解析链接失败: {e}")
+                logger.error(f"解析链接失败 (type={link_type}, id={link_id}): {e}")
 
         return None
 
