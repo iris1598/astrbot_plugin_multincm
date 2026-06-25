@@ -381,10 +381,13 @@ class Main(Star):
                     return
 
                 if isinstance(result, BaseSong):
+                    # 选中歌曲 → 发送后自动退出会话
                     async for r in self._send_song(ev, result):
                         await ev.send(r)
+                    controller.stop()
+                    return
                 elif isinstance(result, BasePlaylist):
-                    # 对于歌单/专辑/电台，进入子列表
+                    # 对于歌单/专辑/电台，进入子列表（会话保持）
                     info = await result.get_info()
                     desc = await info.get_description()
                     await ev.send(ev.chain_result([
@@ -399,8 +402,8 @@ class Main(Star):
                         song_list=result,
                         message_id=sess.message_id,
                     )
-                controller.keep(timeout=timeout, reset_timeout=True)
-                return
+                    controller.keep(timeout=timeout, reset_timeout=True)
+                    return
 
             # ===== 未识别消息：保持会话，不做任何操作 =====
             controller.keep(timeout=timeout, reset_timeout=True)
