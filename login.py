@@ -214,17 +214,22 @@ async def do_login(anonymous: bool = False):
         logger.info(f"登录成功，欢迎您，{nickname} [{uid}]")
 
 
-async def login():
-    """主登录入口"""
+async def login(force: bool = False):
+    """主登录入口
+
+    Args:
+        force: 强制重新登录，跳过已有 session 检查（插件重载时使用）
+    """
     config = _get_config()
 
-    try:
-        session = GetCurrentSession()
-        if getattr(session, 'logged_in', False):
-            logger.info("检测到当前全局 Session 已登录，跳过登录步骤")
-            return
-    except Exception as e:
-        logger.warning(f"检查登录状态失败: {e}，继续尝试登录")
+    if not force:
+        try:
+            session = GetCurrentSession()
+            if getattr(session, 'logged_in', False):
+                logger.info("检测到当前全局 Session 已登录，跳过登录步骤")
+                return
+        except Exception as e:
+            logger.warning(f"检查登录状态失败: {e}，继续尝试登录")
 
     try:
         await do_login(anonymous=config.get("anonymous", False))
