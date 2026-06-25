@@ -35,6 +35,12 @@
         "default": 20,
         "hint": "设置为 1 则变为单选模式，默认 20（与原项目一致）"
     },
+    "session_timeout": {
+        "description": "搜索交互会话超时时间（秒）",
+        "type": "int",
+        "default": 120,
+        "hint": "搜索后用户无操作超过此时间将自动退出选择模式"
+    },
     "send_as_file": {
         "description": "以文件形式发送歌曲（而非语音）",
         "type": "bool",
@@ -58,12 +64,6 @@
         "type": "string",
         "default": "https://oiapi.net/api/QQMusicJSONArk/",
         "hint": "用于生成 QQ 音乐 JSON Ark 卡片的签名 API。默认使用 oiapi.net 公共接口，也可自建"
-    },
-    "selection_timeout": {
-        "description": "搜索选择超时时间（秒）",
-        "type": "int",
-        "default": 120,
-        "hint": "搜索结果出现后，如果用户未在指定时间内选择，会话将自动退出。0 表示不超时"
     },
     "ffmpeg_executable": {
         "description": "FFmpeg 可执行文件路径",
