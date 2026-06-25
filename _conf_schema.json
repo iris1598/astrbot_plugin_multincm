@@ -63,19 +63,7 @@
         "description": "搜索选择超时时间（秒）",
         "type": "int",
         "default": 120,
-        "hint": "搜索结果出现后，如果用户未在指定时间内选择，会话将自动退出并通知。0 表示不超时"
-    },
-    "illegal_cmd_limit": {
-        "description": "非法指令容忍次数",
-        "type": "int",
-        "default": 3,
-        "hint": "搜索选择过程中，连续输入非法指令超过此次数后自动退出。0 表示不限制"
-    },
-    "delete_msg": {
-        "description": "翻页时撤回旧消息",
-        "type": "bool",
-        "default": false,
-        "hint": "开启后翻页时尝试撤回旧的搜索结果消息（需消息平台支持）"
+        "hint": "搜索结果出现后，如果用户未在指定时间内选择，会话将自动退出。0 表示不超时"
     },
     "ffmpeg_executable": {
         "description": "FFmpeg 可执行文件路径",

@@ -57,20 +57,7 @@ SHORT_URL_REGEX = r"163cn\.tv/(?P<suffix>[a-zA-Z0-9]+)"
 EXIT_COMMANDS = {"退出", "tc", "取消", "qx", "quit", "q", "exit", "e", "E", "cancel", "c", "0"}
 PREVIOUS_COMMANDS = {"上一页", "syy", "previous", "p", "P"}
 NEXT_COMMANDS = {"下一页", "xyy", "next", "n", "N"}
-
-# 已知的搜索/功能命令正则（在会话中收到这些命令时放行，不算非法指令）
-_KNOWN_COMMAND_PATTERNS = [
-    r"^(点歌|网易云|wyy|网易点歌|wydg|wysong)\s",
-    r"^(网易专辑|wyzj|wyal)\s",
-    r"^(网易歌单|wygd|wypli)\s",
-    r"^(网易声音|wysy|wyprog)\s",
-    r"^(网易电台|wydt|wydj)\s",
-    r"^(解析|resolve|parse|get)\s",
-    r"^(歌词|lrc|lyric|lyrics)\s",
-    r"^(直链|direct)\s",
-    r"^(点歌帮助|ncm帮助|multincm帮助)$",
-    r"music\.163\.com",
-]
+JUMP_PAGE_PREFIX = ("page", "Page", "PAGE", "p", "P", "跳页", "页")
 
 
 @register("multincm", "lgc-NB2Dev", "网易云多选点歌", "1.0.0", "https://github.com/lgc-NB2Dev/nonebot-plugin-multincm")
@@ -104,12 +91,6 @@ class Main(Star):
         # 选择超时配置（秒）
         self.selection_timeout = self.config.get("selection_timeout", schema_defaults.get("selection_timeout", 120))
 
-        # 非法指令配置
-        self.illegal_cmd_limit = self.config.get("illegal_cmd_limit", schema_defaults.get("illegal_cmd_limit", 3))
-
-        # 消息撤回配置
-        self.delete_msg = self.config.get("delete_msg", schema_defaults.get("delete_msg", False))
-
         # 音乐卡片配置
         self.use_music_card = self.config.get("use_music_card", schema_defaults.get("use_music_card", False))
         self.card_sign_url = self.config.get(
@@ -129,26 +110,22 @@ class Main(Star):
             "password": self.config.get("password", ""),
             "anonymous": self.config.get("anonymous", False),
             "selection_timeout": self.selection_timeout,
-            "illegal_cmd_limit": self.illegal_cmd_limit,
         })
 
         # 搜索会话存储：{session_id: SearchSession}
         self.search_sessions: dict[str, "SearchSession"] = {}
 
-        # 非法指令计数：{session_id: count}
-        self.illegal_counts: dict[str, int] = {}
-
         # 启动过期会话清理任务
         asyncio.create_task(self._cleanup_expired_sessions())
 
-        # 登录（force=True 跳过已有 session 检查，确保重载时重新登录）
+        # 登录
         asyncio.create_task(self._do_login())
 
     async def _do_login(self):
-        """执行登录（force=True 确保重载时重新登录）"""
+        """执行登录"""
         try:
             from .login import login
-            await login(force=True)
+            await login()
         except Exception as e:
             logger.error(f"网易云登录失败: {e}")
 
@@ -287,7 +264,7 @@ class Main(Star):
         self.search_sessions[session_id] = SearchSession(
             searcher=searcher,
             song_list=result.father,
-            unified_msg_origin=event.unified_msg_origin,
+            message_id=self._get_message_id(event),
             timeout=self.selection_timeout,
         )
 
@@ -297,170 +274,127 @@ class Main(Star):
             Comp.Image.fromBytes(img_bytes),
         ])
 
-    # ==================== 选择交互（集中式 handler） ====================
+    # ==================== 选择交互 ====================
 
-    @filter.event_message_type(filter.EventMessageType.ALL)
-    async def _handle_session_interaction(self, event: AstrMessageEvent):
-        """集中处理搜索会话中的所有交互命令
-
-        使用 @filter.event_message_type(ALL) 替代不可靠的 @filter.regex()，
-        通过 msg.strip() + set 检查实现准确的命令匹配，避免因消息格式
-        （前后空格、@前缀等）导致的 regex 匹配失败。
-        """
+    @filter.regex(r"^(退出|tc|取消|qx|quit|q|exit|e|E|cancel|c)$")
+    async def handle_exit(self, event: AstrMessageEvent):
+        """退出搜索"""
         session_id = self._get_session_id(event)
-        sess = self.search_sessions.get(session_id)
+        if session_id in self.search_sessions:
+            del self.search_sessions[session_id]
+            yield event.plain_result("已退出选择模式")
 
-        # 无活跃会话 → 不拦截，放行给其他 handler / LLM
+    @filter.regex(r"^(上一页|syy|previous|p|P)$")
+    async def handle_prev_page(self, event: AstrMessageEvent):
+        """上一页"""
+        sess = self._get_valid_session(event)
+        if not sess:
+            return
+        if sess.song_list.is_first_page:
+            yield event.plain_result("已经是第一页了")
+            return
+        sess.song_list.current_page -= 1
+        async for r in self._show_current_page(event, sess):
+            yield r
+
+    @filter.regex(r"^(下一页|xyy|next|n|N)$")
+    async def handle_next_page(self, event: AstrMessageEvent):
+        """下一页"""
+        sess = self._get_valid_session(event)
+        if not sess:
+            return
+        if sess.song_list.is_last_page:
+            yield event.plain_result("已经是最后一页了")
+            return
+        sess.song_list.current_page += 1
+        async for r in self._show_current_page(event, sess):
+            yield r
+
+    @filter.regex(r"^(page|Page|PAGE|p|P|跳页|页)\s*(\d+)$")
+    async def handle_jump_page(self, event: AstrMessageEvent):
+        """跳页"""
+        sess = self._get_valid_session(event)
+        if not sess:
+            return
+        match = re.match(r"^(page|p|P|跳页|页)\s*(\d+)$", event.message_str.strip())
+        if not match:
+            return
+        page = int(match.group(2))
+        if not sess.song_list.page_valid(page):
+            yield event.plain_result("页码无效")
+            return
+        sess.song_list.current_page = page
+        async for r in self._show_current_page(event, sess):
+            yield r
+
+    @filter.regex(r"^\d+$")
+    async def handle_select(self, event: AstrMessageEvent):
+        """选择序号"""
+        session_id = self._get_session_id(event)
+        sess = self._get_valid_session(event)
         if not sess:
             return
 
-        # 会话已过期 → 通知用户并清理
-        if sess.is_expired():
-            del self.search_sessions[session_id]
-            self.illegal_counts.pop(session_id, None)
-            yield event.plain_result("⏰ 搜索会话已超时，请重新搜索")
-            event.stop_event()
-            return
-
         msg = event.message_str.strip()
-
-        # === 退出 ===
-        if msg in EXIT_COMMANDS:
-            del self.search_sessions[session_id]
-            self.illegal_counts.pop(session_id, None)
-            yield event.plain_result("已退出选择模式")
-            event.stop_event()
+        if not msg.isdigit():
             return
 
-        # === 上一页 ===
-        if msg in PREVIOUS_COMMANDS:
-            if sess.song_list.is_first_page:
-                yield event.plain_result("已经是第一页了")
-            else:
-                sess.song_list.current_page -= 1
-                async for r in self._show_current_page(event, sess):
-                    yield r
-            sess.touch()
-            event.stop_event()
+        index = int(msg) - 1
+        if not sess.song_list.index_valid(index):
+            yield event.plain_result(f"序号无效，请输入 1-{sess.song_list.total_count} 之间的数字")
             return
 
-        # === 下一页 ===
-        if msg in NEXT_COMMANDS:
-            if sess.song_list.is_last_page:
-                yield event.plain_result("已经是最后一页了")
-            else:
-                sess.song_list.current_page += 1
-                async for r in self._show_current_page(event, sess):
-                    yield r
-            sess.touch()
-            event.stop_event()
+        try:
+            result = await sess.song_list.select(index)
+        except Exception as e:
+            logger.error(f"选择出错: {e}")
+            yield event.plain_result("选择出错，请检查后台日志")
             return
 
-        # === 跳页 ===
-        m = re.match(r"^(page|Page|PAGE|p|P|跳页|页)\s*(\d+)$", msg)
-        if m:
-            page = int(m.group(2))
-            if not sess.song_list.page_valid(page):
-                yield event.plain_result("页码无效")
-            else:
-                sess.song_list.current_page = page
-                async for r in self._show_current_page(event, sess):
-                    yield r
-            sess.touch()
-            event.stop_event()
-            return
-
-        # === 序号选择 ===
-        if msg.isdigit():
-            index = int(msg) - 1
-            if not sess.song_list.index_valid(index):
-                yield event.plain_result(
-                    f"序号无效，请输入 1-{sess.song_list.total_count} 之间的数字"
-                )
-                event.stop_event()
-                return
-
-            try:
-                result = await sess.song_list.select(index)
-            except Exception as e:
-                logger.error(f"选择出错: {e}")
-                yield event.plain_result("选择出错，请检查后台日志")
-                event.stop_event()
-                return
-
-            if isinstance(result, BaseSong):
-                # 选到歌曲 → 发送并清理会话
-                async for r in self._send_song(event, result):
-                    yield r
+        if isinstance(result, BaseSong):
+            async for r in self._send_song(event, result):
+                yield r
+            # 选歌完成，清理搜索会话
+            if session_id in self.search_sessions:
                 del self.search_sessions[session_id]
-                self.illegal_counts.pop(session_id, None)
-            elif isinstance(result, BasePlaylist):
-                # 选到歌单/专辑/电台 → 进入子列表
-                info = await result.get_info()
-                desc = await info.get_description()
-                yield event.chain_result([
-                    Comp.Plain(f"📋 {desc}\n\n发送序号选择子项 | P上一页 N下一页 | 退出(E)"),
-                ])
-                self.search_sessions[session_id] = SearchSession(
-                    searcher=sess.searcher,
-                    song_list=result,
-                    unified_msg_origin=sess.unified_msg_origin,
-                    timeout=self.selection_timeout,
-                )
-            event.stop_event()
-            return
-
-        # === 检查是否为已知搜索/功能命令（在会话中放行） ===
-        if self._is_known_command(msg):
-            return  # 不拦截，让对应的 regex handler 处理
-
-        # === 非法指令计数 ===
-        if self.illegal_cmd_limit <= 0:
-            # 不限制非法指令
-            return
-
-        cnt = self.illegal_counts.get(session_id, 0) + 1
-        self.illegal_counts[session_id] = cnt
-        if cnt >= self.illegal_cmd_limit:
-            del self.search_sessions[session_id]
-            self.illegal_counts.pop(session_id, None)
-            yield event.plain_result(
-                f"❌ 非法指令次数已达上限({self.illegal_cmd_limit}次)，已退出选择模式"
+        elif isinstance(result, BasePlaylist):
+            # 对于歌单/专辑/电台，进入子列表
+            info = await result.get_info()
+            desc = await info.get_description()
+            yield event.chain_result([
+                Comp.Plain(f"📋 {desc}\n\n发送序号选择子项 | 退出(E)"),
+            ])
+            # 更新搜索会话为子列表，重置超时时间
+            self.search_sessions[session_id] = SearchSession(
+                searcher=sess.searcher,
+                song_list=result,
+                message_id=sess.message_id,
+                timeout=self.selection_timeout,
             )
-        else:
-            remaining = self.illegal_cmd_limit - cnt
-            yield event.plain_result(f"❓ 无效指令，剩余尝试次数: {remaining}")
-        event.stop_event()
 
     async def _cleanup_expired_sessions(self):
-        """定期清理过期的搜索会话（含超时通知）"""
+        """定期清理过期的搜索会话"""
         while True:
             await asyncio.sleep(30)
             now = time.time()
             expired = [
-                (sid, sess) for sid, sess in self.search_sessions.items()
+                sid for sid, sess in self.search_sessions.items()
                 if sess.is_expired(now)
             ]
-            for sid, sess in expired:
+            for sid in expired:
                 logger.debug(f"清理超时搜索会话: {sid}")
                 del self.search_sessions[sid]
-                self.illegal_counts.pop(sid, None)
-                # 尝试发送超时通知
-                if sess.unified_msg_origin:
-                    try:
-                        from astrbot.api.event import MessageChain
-                        chain = MessageChain().message("⏰ 搜索会话已超时，已自动退出选择模式")
-                        await self.context.send_message(sess.unified_msg_origin, chain)
-                    except Exception as e:
-                        logger.debug(f"发送超时通知失败: {e}")
 
-    def _is_known_command(self, msg: str) -> bool:
-        """检查消息是否为已知的搜索/功能命令（在会话中不计数为非法）
-
-        使用 re.search 而非 re.match，确保 URL 模式能在消息任意位置匹配。
-        带 ^ 锚定的模式行为不变（仍在开头匹配）。
-        """
-        return any(re.search(pat, msg) for pat in _KNOWN_COMMAND_PATTERNS)
+    def _get_valid_session(self, event: AstrMessageEvent) -> "SearchSession | None":
+        """获取并验证会话是否过期"""
+        session_id = self._get_session_id(event)
+        sess = self.search_sessions.get(session_id)
+        if not sess:
+            return None
+        if sess.is_expired():
+            del self.search_sessions[session_id]
+            return None
+        return sess
 
     async def _show_current_page(self, event: AstrMessageEvent, sess: "SearchSession"):
         """显示当前页"""
@@ -669,7 +603,7 @@ class Main(Star):
             self.search_sessions[session_id] = SearchSession(
                 searcher=None,
                 song_list=result,
-                unified_msg_origin=event.unified_msg_origin,
+                message_id=self._get_message_id(event),
                 timeout=self.selection_timeout,
             )
 
@@ -691,6 +625,12 @@ class Main(Star):
                 song = result
 
         # 如果没有指定，尝试从最近搜索会话获取
+        if not song:
+            sess = self._get_valid_session(event)
+            if sess and isinstance(sess.song_list, BaseSearcher):
+                yield event.plain_result("请先搜索歌曲或回复网易云链接获取歌词")
+                return
+
         if not song:
             yield event.plain_result("请指定歌曲：歌词 [链接/歌名]")
             return
@@ -820,6 +760,12 @@ class Main(Star):
 
         return None
 
+    def _get_message_id(self, event: AstrMessageEvent) -> str:
+        """获取消息ID"""
+        if hasattr(event, "message_obj") and hasattr(event.message_obj, "message_id"):
+            return str(event.message_obj.message_id)
+        return str(event.session_id)
+
 
 class SearchSession:
     """搜索会话"""
@@ -827,12 +773,12 @@ class SearchSession:
         self,
         searcher: BaseSearcher | None,
         song_list: GeneralSongList,
-        unified_msg_origin: str,
+        message_id: str,
         timeout: float = 120,
     ):
         self.searcher = searcher
         self.song_list = song_list
-        self.unified_msg_origin = unified_msg_origin
+        self.message_id = message_id
         self._created_at = time.time()
         self._timeout = timeout
 
@@ -841,7 +787,3 @@ class SearchSession:
         if now is None:
             now = time.time()
         return now > self._created_at + self._timeout
-
-    def touch(self):
-        """刷新会话超时时间（用户活跃交互时调用）"""
-        self._created_at = time.time()
