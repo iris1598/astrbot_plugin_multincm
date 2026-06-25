@@ -141,15 +141,7 @@ class Main(Star):
         # 启动过期会话清理任务
         asyncio.create_task(self._cleanup_expired_sessions())
 
-        # 强制清除 pyncm 全局 session 状态，确保重载插件时重新登录
-        try:
-            from pyncm import SetCurrentSession
-            SetCurrentSession(None)
-            logger.info("已清除 pyncm 全局 session，将在后台重新登录")
-        except Exception:
-            pass
-
-        # 登录
+        # 登录（force=True 跳过已有 session 检查，确保重载时重新登录）
         asyncio.create_task(self._do_login())
 
     async def _do_login(self):
