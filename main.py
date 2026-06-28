@@ -10,9 +10,9 @@ from typing import Optional
 import httpx
 from astrbot.api import logger
 from astrbot.api.event import filter, AstrMessageEvent
+from astrbot.api.message_components import BaseMessageComponent, ComponentType
 from astrbot.api.star import Context, Star, register
 import astrbot.api.message_components as Comp
-from astrbot.api.message_components import Json
 from astrbot.core.utils.session_waiter import session_waiter, SessionController
 
 from .data_source import (
@@ -67,6 +67,46 @@ JUMP_REGEX = re.compile(r"^(page|p|跳页|页)\s*(\d+)$", re.IGNORECASE)
 DIGIT_REGEX = re.compile(r"^\d+$")
 
 
+class MusicCardComponent(BaseMessageComponent):
+    """自定义音乐卡片组件。
+
+    注意：AstrBot 内置的 Comp.Music 组件在 Pydantic v1 下 _type 字段会被当作
+    私有属性忽略，导致序列化后丢失 type 字段。本组件通过非 _ 前缀字段绕过此限制，
+    并重写 toDict() 直接输出正确的 OneBot 11 music 消息段格式，
+    兼容 LuckyLilliaBot (LLOneBot) 等 OneBot 协议端。
+
+    LLOneBot 收到后会自动调用其配置的 musicSignUrl 签名服务完成签名。
+    """
+
+    type: ComponentType = ComponentType.Music
+    music_type: str = "163"
+    song_id: int = 0
+    url: str = ""
+    audio: str = ""
+    title: str = ""
+    content: str = ""
+    image: str = ""
+
+    def toDict(self) -> dict:
+        """生成标准的 OneBot 11 music 消息段。"""
+        data: dict[str, object] = {"type": self.music_type}
+        # ID 方式
+        if self.music_type != "custom" and self.song_id:
+            data["id"] = self.song_id
+        # 自定义方式
+        if self.url:
+            data["url"] = self.url
+        if self.audio:
+            data["audio"] = self.audio
+        if self.title:
+            data["title"] = self.title
+        if self.content:
+            data["content"] = self.content
+        if self.image:
+            data["image"] = self.image
+        return {"type": "music", "data": data}
+
+
 @register("multincm", "lgc-NB2Dev", "网易云多选点歌", "1.0.0", "https://github.com/lgc-NB2Dev/nonebot-plugin-multincm")
 class Main(Star):
     def __init__(self, context: Context, config: dict = None):
@@ -98,12 +138,8 @@ class Main(Star):
         # 会话超时配置
         self.session_timeout = self.config.get("session_timeout", schema_defaults.get("session_timeout", 120))
 
-        # 音乐卡片配置
+        # 音乐卡片配置（启用后使用 Comp.Music 组件发送，由适配的 OneBot 协议端自行签名）
         self.use_music_card = self.config.get("use_music_card", schema_defaults.get("use_music_card", False))
-        self.card_sign_url = self.config.get(
-            "card_sign_url",
-            schema_defaults.get("card_sign_url", "https://oiapi.net/api/QQMusicJSONArk/"),
-        )
 
         # 更新全局配置
         _config.update({
@@ -501,35 +537,29 @@ class Main(Star):
             logger.error(f"发送音频失败: {e}")
             yield event.plain_result(f"音频发送失败，请使用链接收听: {url}")
 
-    async def _send_music_card(self, info: "SongInfo") -> "Json | None":
-        """通过签名 API 构建并发送音乐卡片
+    async def _send_music_card(self, info: "SongInfo") -> "MusicCardComponent | None":
+        """使用 MusicCardComponent 发送音乐卡片。
 
-        参考 astrbot_plugin_meting 的实现，使用 QQ 音乐 JSON Ark 协议。
-        返回 Json 消息组件，失败返回 None。
+        MusicCardComponent 生成标准 OneBot 11 music 消息段，
+        LLOneBot 等协议端收到后会自动调用其内置的 musicSignUrl 签名服务完成签名。
+
+        优先使用网易云歌曲 ID（type=163）发送；若无有效 ID 则回退自定义方式。
         """
-        if not self.card_sign_url:
-            logger.debug("未配置 card_sign_url，跳过音乐卡片")
-            return None
-
         if not info.playable_url:
             logger.debug("歌曲无可播放地址，跳过音乐卡片")
             return None
 
-        # 构建跳转链接（网易云）
+        song_id = info.id
+
+        if song_id:
+            logger.info(f"发送网易云音乐卡片 (ID={song_id}): {info.display_name}")
+            return MusicCardComponent(music_type="163", song_id=song_id)
+
+        # 回退到自定义卡片方式
         jump_url = info.url or ""
-        # 从播放 URL 提取歌曲 ID
-        song_id = ""
-        try:
-            import urllib.parse
-            parsed = urllib.parse.urlparse(info.playable_url)
-            qs = urllib.parse.parse_qs(parsed.query)
-            song_id = qs.get("id", [""])[0]
-        except Exception:
-            pass
-        if not jump_url and song_id:
+        if not jump_url:
             jump_url = f"https://music.163.com/#/song?id={song_id}"
 
-        # 处理封面 URL（网易云封面需要指定大小）
         cover = info.cover_url or ""
         if cover:
             cover = cover.replace("http://", "https://")
@@ -537,48 +567,17 @@ class Main(Star):
                 connector = "&" if "?" in cover else "?"
                 cover = f"{cover}{connector}picsize=320"
 
-        # 强制 HTTPS
         song_url = info.playable_url.replace("http://", "https://")
 
-        # 规范化签名 API URL
-        sign_url = self.card_sign_url.strip()
-        sign_url = sign_url.replace("http://", "https://")
-        if not sign_url.endswith("/"):
-            sign_url += "/"
-
-        # 构建签名请求参数
-        params = {
-            "url": song_url,
-            "song": info.display_name or "未知",
-            "singer": info.display_artists or "未知歌手",
-            "cover": cover,
-            "jump": jump_url,
-            "format": "163",
-        }
-
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                resp = await client.get(sign_url, params=params)
-                if resp.status_code != 200:
-                    logger.warning(f"音乐卡片签名 API 返回 {resp.status_code}")
-                    return None
-
-                res_json = resp.json()
-                if res_json.get("code") == 1:
-                    ark_data = res_json.get("data")
-                    if not ark_data:
-                        logger.warning("签名 API 返回的 data 为空")
-                        return None
-                    token = ark_data.get("config", {}).get("token", "")
-                    json_card = Json(data=ark_data, config={"token": token})
-                    logger.info(f"音乐卡片签名成功: {info.display_name}")
-                    return json_card
-                else:
-                    logger.warning(f"音乐卡片签名失败: {res_json.get('message', '未知错误')}")
-                    return None
-        except Exception as e:
-            logger.warning(f"音乐卡片签名请求异常: {e}")
-            return None
+        logger.info(f"发送自定义音乐卡片: {info.display_name}")
+        return MusicCardComponent(
+            music_type="custom",
+            url=jump_url,
+            audio=song_url,
+            title=info.display_name or "未知",
+            content=info.display_artists or "",
+            image=cover,
+        )
 
     async def _download_audio(self, info: SongInfo) -> Optional[Path]:
         """下载音频文件到缓存"""
@@ -728,7 +727,7 @@ class Main(Star):
             "  歌词 [链接] - 获取歌词\n"
             "  直链 [链接] - 获取播放直链\n\n"
             f"⏰ 搜索结果 {self.session_timeout} 秒无操作自动退出\n"
-            "💡 QQ 平台开启「使用音乐卡片」后可发送音乐卡片\n"
+            "💡 QQ 平台开启「使用音乐卡片」后可发送音乐卡片（由协议端内置签名服务处理）\n"
             "💡 输入音乐ID可直接发送对应音乐"
         )
         yield event.plain_result(help_text)

@@ -57,13 +57,7 @@
         "description": "使用音乐卡片发送歌曲（仅支持 QQ 平台）",
         "type": "bool",
         "default": false,
-        "hint": "开启后在 QQ 平台将以音乐卡片形式发送歌曲，而非文本+语音。需要配置 card_sign_url"
-    },
-    "card_sign_url": {
-        "description": "音乐卡片签名 API 地址",
-        "type": "string",
-        "default": "https://oiapi.net/api/QQMusicJSONArk/",
-        "hint": "用于生成 QQ 音乐 JSON Ark 卡片的签名 API。默认使用 oiapi.net 公共接口，也可自建"
+        "hint": "开启后在 QQ 平台将以音乐卡片形式发送歌曲，而非文本+语音。由协议端（如 LLOneBot）内置的签名服务自动处理"
     },
     "ffmpeg_executable": {
         "description": "FFmpeg 可执行文件路径",
