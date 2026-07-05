@@ -10,7 +10,6 @@ from typing import Optional
 import httpx
 from astrbot.api import logger
 from astrbot.api.event import filter, AstrMessageEvent
-from astrbot.api.message_components import BaseMessageComponent, ComponentType
 from astrbot.api.star import Context, Star, register
 import astrbot.api.message_components as Comp
 from astrbot.core.utils.session_waiter import session_waiter, SessionController
@@ -65,46 +64,6 @@ PREV_REGEX = re.compile(r"^(上一页|syy|previous|p|P)$")
 NEXT_REGEX = re.compile(r"^(下一页|xyy|next|n|N)$")
 JUMP_REGEX = re.compile(r"^(page|p|跳页|页)\s*(\d+)$", re.IGNORECASE)
 DIGIT_REGEX = re.compile(r"^\d+$")
-
-
-class MusicCardComponent(BaseMessageComponent):
-    """自定义音乐卡片组件。
-
-    注意：AstrBot 内置的 Comp.Music 组件在 Pydantic v1 下 _type 字段会被当作
-    私有属性忽略，导致序列化后丢失 type 字段。本组件通过非 _ 前缀字段绕过此限制，
-    并重写 toDict() 直接输出正确的 OneBot 11 music 消息段格式，
-    兼容 LuckyLilliaBot (LLOneBot) 等 OneBot 协议端。
-
-    LLOneBot 收到后会自动调用其配置的 musicSignUrl 签名服务完成签名。
-    """
-
-    type: ComponentType = ComponentType.Music
-    music_type: str = "163"
-    song_id: int = 0
-    url: str = ""
-    audio: str = ""
-    title: str = ""
-    content: str = ""
-    image: str = ""
-
-    def toDict(self) -> dict:
-        """生成标准的 OneBot 11 music 消息段。"""
-        data: dict[str, object] = {"type": self.music_type}
-        # ID 方式
-        if self.music_type != "custom" and self.song_id:
-            data["id"] = self.song_id
-        # 自定义方式
-        if self.url:
-            data["url"] = self.url
-        if self.audio:
-            data["audio"] = self.audio
-        if self.title:
-            data["title"] = self.title
-        if self.content:
-            data["content"] = self.content
-        if self.image:
-            data["image"] = self.image
-        return {"type": "music", "data": data}
 
 
 @register("multincm", "lgc-NB2Dev", "网易云多选点歌", "1.0.0", "https://github.com/lgc-NB2Dev/nonebot-plugin-multincm")
@@ -537,13 +496,15 @@ class Main(Star):
             logger.error(f"发送音频失败: {e}")
             yield event.plain_result(f"音频发送失败，请使用链接收听: {url}")
 
-    async def _send_music_card(self, info: "SongInfo") -> "MusicCardComponent | None":
-        """使用 MusicCardComponent 发送音乐卡片。
+    async def _send_music_card(self, info: "SongInfo") -> "Comp.Music | None":
+        """使用 Comp.Music 发送音乐卡片。
 
-        MusicCardComponent 生成标准 OneBot 11 music 消息段，
+        生成标准 OneBot 11 music 消息段，
         LLOneBot 等协议端收到后会自动调用其内置的 musicSignUrl 签名服务完成签名。
 
         优先使用网易云歌曲 ID（type=163）发送；若无有效 ID 则回退自定义方式。
+
+        Pydantic v1 会忽略 _ 前缀字段（_type），需要通过 __dict__ 手动注入。
         """
         if not info.playable_url:
             logger.debug("歌曲无可播放地址，跳过音乐卡片")
@@ -553,7 +514,9 @@ class Main(Star):
 
         if song_id:
             logger.info(f"发送网易云音乐卡片 (ID={song_id}): {info.display_name}")
-            return MusicCardComponent(music_type="163", song_id=song_id)
+            card = Comp.Music(id=song_id)
+            card.__dict__["_type"] = "163"
+            return card
 
         # 回退到自定义卡片方式
         jump_url = info.url or ""
@@ -570,14 +533,15 @@ class Main(Star):
         song_url = info.playable_url.replace("http://", "https://")
 
         logger.info(f"发送自定义音乐卡片: {info.display_name}")
-        return MusicCardComponent(
-            music_type="custom",
+        card = Comp.Music(
             url=jump_url,
             audio=song_url,
             title=info.display_name or "未知",
             content=info.display_artists or "",
             image=cover,
         )
+        card.__dict__["_type"] = "custom"
+        return card
 
     async def _download_audio(self, info: SongInfo) -> Optional[Path]:
         """下载音频文件到缓存"""
@@ -602,6 +566,10 @@ class Main(Star):
         if not match:
             return
         keyword = match.group(2).strip()
+
+        # 不包含网易云域名时跳过，避免对非网易云内容误响应
+        if keyword and not re.search(r"(music\.163\.com|163cn\.tv)", event.message_str, re.IGNORECASE):
+            return
 
         result = await self._resolve_from_text(keyword)
         if not result:
@@ -686,6 +654,10 @@ class Main(Star):
         if not match:
             return
         keyword = match.group(2).strip()
+
+        # 不包含网易云域名时跳过，避免对非网易云内容误响应
+        if keyword and not re.search(r"(music\.163\.com|163cn\.tv)", event.message_str, re.IGNORECASE):
+            return
 
         song = None
         if keyword:
