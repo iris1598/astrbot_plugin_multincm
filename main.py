@@ -360,16 +360,22 @@ class Main(Star):
 
             # ===== 序号选择 =====
             if DIGIT_REGEX.match(msg):
-                index = int(msg) - 1
-                if not sess.song_list.index_valid(index):
+                # 将用户输入的页内序号转换为全局绝对索引
+                page = sess.song_list.current_page
+                limit = self.list_limit
+                absolute_index = (page - 1) * limit + int(msg) - 1
+                if not sess.song_list.index_valid(absolute_index):
+                    # 计算当前页实际的有效范围
+                    remaining = sess.song_list.total_count - (page - 1) * limit
+                    valid_max = min(limit, remaining)
                     await ev.send(ev.plain_result(
-                        f"序号无效，请输入 1-{sess.song_list.total_count} 之间的数字"
+                        f"序号无效，请输入 1-{valid_max} 之间的数字"
                     ))
                     controller.keep(timeout=timeout, reset_timeout=True)
                     return
 
                 try:
-                    result = await sess.song_list.select(index)
+                    result = await sess.song_list.select(absolute_index)
                 except Exception as e:
                     logger.error(f"选择出错: {e}")
                     await ev.send(ev.plain_result("选择出错，请检查后台日志"))
