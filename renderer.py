@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw, ImageFont
 from astrbot.api import logger
 
 if TYPE_CHECKING:
-    from .data_source import GeneralSongListPage, ListPageCard
+    from .data_source import GeneralSongListPage, ListPageCard, SongInfo
     from .lrc_parser import NCMLrcGroupLine
 
 # ==================== 字体加载 ====================
@@ -123,6 +123,16 @@ COLOR_FG_PRI = (165, 173, 203) # #a5adcb
 COLOR_FG_SEC = (128, 135, 162) # #8087a2
 COLOR_INDEX_BG = (100, 140, 210)  # 实心蓝（PIL RGB模式不支持alpha）
 COLOR_ACCENT = (138, 173, 244) # #8aadf4
+
+# 歌词专用配色
+COLOR_LRC_BG_TOP = (54, 58, 84)      # 顶栏渐变深色
+COLOR_LRC_BG_BOT = (36, 39, 58)      # 顶栏渐变深色（与底色融合）
+COLOR_LRC_DIVIDER = (68, 73, 100)    # 分隔线
+COLOR_LRC_MAIN = (220, 224, 240)     # 主歌词（高亮白）
+COLOR_LRC_TRANS = (138, 173, 244)    # 翻译（强调蓝）
+COLOR_LRC_ROMA = (160, 165, 190)     # 罗马音
+COLOR_LRC_TIME = (200, 130, 130)     # 时间戳（暖色点缀）
+COLOR_LRC_META = (110, 115, 140)     # meta 元信息
 
 IMG_WIDTH = 780
 PADDING = 20
@@ -333,71 +343,351 @@ def _truncate_text(draw: ImageDraw.Draw, text: str, font, max_width: int) -> str
     return text + "…" if text else ""
 
 
-async def render_lyrics(groups: list["NCMLrcGroupLine"]) -> bytes:
-    """渲染歌词图片"""
-    font_main = _get_font(20)
-    font_roma = _get_font(14)
-    font_trans = _get_font(16)
+async def render_lyrics(
+    groups: list["NCMLrcGroupLine"],
+    info: "SongInfo | None" = None,
+) -> bytes:
+    """渲染歌词图片。
+
+    样式：
+      - 顶栏：歌曲标题 + 艺人，渐变背景 + 左侧装饰条
+      - 主体：每行三段式（时间戳 · 主歌词 / 翻译 / 罗马音）
+      - 底栏：贡献者 / 版权信息
+    """
+    LRC_IMG_WIDTH = 780
+    LRC_PADDING_X = 32
+    LRC_PADDING_Y = 24
+    LRC_HEADER_H = 110
+    LRC_FOOTER_H = 56
+    LRC_GROUP_GAP = 22
+    LRC_INTER_GAP = 4  # main 与 trans/roma 之间的间距
+    LRC_INTRA_GAP = 2  # 同一类型多行换行间距
 
     sort_order = ("roma", "main", "trans")
+    has_roma = any("roma" in g.lrc for g in groups)
+    has_trans = any("trans" in g.lrc for g in groups)
 
-    # 先计算所有行的高度
-    line_heights: list[int] = []
-    for group in groups:
+    font_header_title = _get_font(28)
+    font_header_artist = _get_font(16)
+    font_main = _get_font(22)
+    font_trans = _get_font(16)
+    font_roma = _get_font(14)
+    font_time = _get_font(13)
+    font_meta = _get_font(12)
+    font_footer = _get_font(12)
+
+    def _measure_lines(draw: ImageDraw.Draw, group: "NCMLrcGroupLine") -> list[tuple[str, str, int]]:
+        rows: list[tuple[str, str, int]] = []
         sorted_items = sorted(
             group.lrc.items(),
             key=lambda x: sort_order.index(x[0]) if x[0] in sort_order else 999,
         )
-        h = 8  # 行间距
         for name, text in sorted_items:
             if name == "meta":
-                continue
-            if name == "roma":
-                h += 20
+                rows.append(("meta", text, 0))
+            elif name == "roma":
+                rows.append(("roma", text, 22))
             elif name == "main":
-                h += 28
+                rows.append(("main", text, 30))
             elif name == "trans":
-                h += 24
-        h = max(h, 28)
-        line_heights.append(h)
+                rows.append(("trans", text, 24))
+        return rows
 
-    total_h = sum(line_heights) + PADDING * 2 + 40  # 40 = footer
-    total_h = max(total_h, 200)
+    def _wrap_text(draw: ImageDraw.Draw, text: str, font, max_w: int) -> list[str]:
+        if not text:
+            return [""]
+        lines: list[str] = []
+        buf = ""
+        for ch in text:
+            buf += ch
+            bbox = draw.textbbox((0, 0), buf, font=font)
+            if bbox[2] - bbox[0] > max_w:
+                buf = buf[:-1]
+                if buf:
+                    lines.append(buf)
+                buf = ch
+        if buf:
+            lines.append(buf)
+        return lines or [""]
 
-    img = Image.new("RGB", (600, total_h), COLOR_BG)
+    def _row_height(rows: list[tuple[str, str, int]], draw: ImageDraw.Draw) -> int:
+        """计算一组 group 的总高度"""
+        h = 0
+        prev_kind = None
+        for kind, text, base_h in rows:
+            if kind == "meta":
+                continue
+            if prev_kind is not None and prev_kind != kind:
+                h += LRC_INTER_GAP
+            if kind == "main":
+                wrapped = _wrap_text(draw, text, font_main, main_max_w - 66)
+                h += base_h * len(wrapped) + (len(wrapped) - 1) * LRC_INTRA_GAP
+            elif kind == "trans":
+                wrapped = _wrap_text(draw, text, font_trans, trans_max_w - 66)
+                h += base_h * len(wrapped) + (len(wrapped) - 1) * LRC_INTRA_GAP
+            elif kind == "roma":
+                wrapped = _wrap_text(draw, text, font_roma, roma_max_w - 66)
+                h += base_h * len(wrapped) + (len(wrapped) - 1) * LRC_INTRA_GAP
+            prev_kind = kind
+        return h
+
+    # ===== 计算布局 =====
+    probe = Image.new("RGB", (LRC_IMG_WIDTH, 1), COLOR_BG)
+    probe_draw = ImageDraw.Draw(probe)
+
+    main_max_w = LRC_IMG_WIDTH - LRC_PADDING_X * 2 - 60
+    trans_max_w = LRC_IMG_WIDTH - LRC_PADDING_X * 2 - 24
+    roma_max_w = LRC_IMG_WIDTH - LRC_PADDING_X * 2 - 24
+
+    def _is_placeholder(group: "NCMLrcGroupLine") -> bool:
+        """是否是无意义的占位行（仅含一个 '-' main 行）"""
+        return (
+            len(group.lrc) == 1
+            and "main" in group.lrc
+            and group.lrc["main"].strip() in ("-", "")
+        )
+
+    body_h = 0
+    prev_was_meta = False
+    for i, group in enumerate(groups):
+        if _is_placeholder(group):
+            continue
+        rows = _measure_lines(probe_draw, group)
+        if not rows:
+            continue
+        is_meta = len(rows) == 1 and rows[0][0] == "meta"
+        if is_meta:
+            continue
+        if i > 0 and prev_was_meta:
+            body_h += LRC_GROUP_GAP // 2
+        body_h += _row_height(rows, probe_draw)
+        if i < len(groups) - 1:
+            body_h += LRC_GROUP_GAP
+        prev_was_meta = False
+
+    total_h = LRC_HEADER_H + LRC_PADDING_Y + body_h + LRC_PADDING_Y + LRC_FOOTER_H
+    total_h = max(total_h, 320)
+
+    img = Image.new("RGB", (LRC_IMG_WIDTH, total_h), COLOR_BG)
     draw = ImageDraw.Draw(img)
 
-    y = PADDING
-    for group in groups:
-        sorted_items = sorted(
-            group.lrc.items(),
-            key=lambda x: sort_order.index(x[0]) if x[0] in sort_order else 999,
-        )
-        for name, text in sorted_items:
-            if name == "meta":
-                continue
-            if name == "roma":
-                bbox = draw.textbbox((0, 0), text, font=font_roma)
-                tw = bbox[2] - bbox[0]
-                draw.text(((600 - tw) // 2, y), text, font=font_roma, fill=COLOR_FG_SEC)
-                y += 20
-            elif name == "main":
-                bbox = draw.textbbox((0, 0), text, font=font_main)
-                tw = bbox[2] - bbox[0]
-                draw.text(((600 - tw) // 2, y), text, font=font_main, fill=COLOR_FG_PRI)
-                y += 28
-            elif name == "trans":
-                bbox = draw.textbbox((0, 0), text, font=font_trans)
-                tw = bbox[2] - bbox[0]
-                draw.text(((600 - tw) // 2, y), text, font=font_trans, fill=COLOR_ACCENT)
-                y += 24
+    # ===== 顶栏：渐变背景 =====
+    for y_off in range(LRC_HEADER_H):
+        t = y_off / max(LRC_HEADER_H - 1, 1)
+        r = int(COLOR_LRC_BG_TOP[0] * (1 - t) + COLOR_LRC_BG_BOT[0] * t)
+        g = int(COLOR_LRC_BG_TOP[1] * (1 - t) + COLOR_LRC_BG_BOT[1] * t)
+        b = int(COLOR_LRC_BG_TOP[2] * (1 - t) + COLOR_LRC_BG_BOT[2] * t)
+        draw.line([(0, y_off), (LRC_IMG_WIDTH, y_off)], fill=(r, g, b))
 
-    # Footer
-    footer_text = "Generated by astrbot-plugin-multincm"
-    fbbox = draw.textbbox((0, 0), footer_text, font=_get_font(12))
+    # 左侧装饰条
+    draw.rectangle([0, 0, 6, LRC_HEADER_H], fill=COLOR_ACCENT)
+
+    # 标题与艺人
+    title_text = (info.display_name if info and info.display_name else "歌词")
+    artist_text = (info.display_artists if info and info.display_artists else "")
+
+    # 标题左侧三个点状装饰（避免使用 ♪ 字符以兼容字体）
+    for i, dy in enumerate([0, 8, 16]):
+        draw.ellipse(
+            [(LRC_PADDING_X, 36 + dy),
+             (LRC_PADDING_X + 6, 36 + dy + 6)],
+            fill=COLOR_ACCENT,
+        )
+
+    max_title_w = LRC_IMG_WIDTH - LRC_PADDING_X * 2 - 28
+    title_bbox = draw.textbbox((0, 0), title_text, font=font_header_title)
+    if title_bbox[2] - title_bbox[0] > max_title_w:
+        title_text = _truncate_text(draw, title_text, font_header_title, max_title_w)
+    draw.text(
+        (LRC_PADDING_X + 18, 24),
+        title_text, font=font_header_title, fill=COLOR_FG_PRI,
+    )
+
+    if artist_text:
+        artist_display = f"by  {artist_text}"
+        if has_roma or has_trans:
+            tags = []
+            if has_trans:
+                tags.append("译")
+            if has_roma:
+                tags.append("音")
+            if tags:
+                artist_display += f"   [{'/'.join(tags)}]"
+        draw.text(
+            (LRC_PADDING_X + 18, 68),
+            artist_display, font=font_header_artist, fill=COLOR_FG_SEC,
+        )
+
+    # 双重分隔线
+    draw.line(
+        [(LRC_PADDING_X, LRC_HEADER_H - 2), (LRC_IMG_WIDTH - LRC_PADDING_X, LRC_HEADER_H - 2)],
+        fill=COLOR_LRC_DIVIDER, width=1,
+    )
+    draw.line(
+        [(LRC_PADDING_X, LRC_HEADER_H), (LRC_IMG_WIDTH - LRC_PADDING_X, LRC_HEADER_H)],
+        fill=COLOR_LRC_DIVIDER, width=1,
+    )
+
+    # ===== 正文 =====
+    y = LRC_HEADER_H + LRC_PADDING_Y
+    prev_was_meta = False
+
+    for i, group in enumerate(groups):
+        if _is_placeholder(group):
+            continue
+        rows = _measure_lines(draw, group)
+        if not rows:
+            continue
+
+        is_meta = len(rows) == 1 and rows[0][0] == "meta"
+        if is_meta:
+            prev_was_meta = True
+            continue
+
+        if i > 0 and prev_was_meta:
+            y += LRC_GROUP_GAP // 2
+        prev_was_meta = False
+
+        # 时间戳和竖条
+        time_str = _format_time(group.time)
+        time_x = LRC_PADDING_X
+
+        first_main_idx = next(
+            (idx for idx, (k, _, _) in enumerate(rows) if k == "main"), 0
+        )
+        # 计算 first_main 之前的累积高度
+        cum_h = 0
+        prev_kind_for_first = None
+        for k, t, bh in rows[:first_main_idx]:
+            if prev_kind_for_first is not None and prev_kind_for_first != k:
+                cum_h += LRC_INTER_GAP
+            if k == "roma":
+                cum_h += 22
+            elif k == "trans":
+                cum_h += 24
+            prev_kind_for_first = k
+        first_main_top = y + cum_h
+
+        time_text_y = first_main_top + (30 - 16) // 2
+        if time_str:
+            draw.text(
+                (time_x, time_text_y),
+                time_str, font=font_time, fill=COLOR_LRC_TIME,
+            )
+
+        # 竖条
+        bar_x = time_x + 52
+        # 竖条覆盖整组高度
+        group_h = _row_height(rows, draw)
+        draw.line(
+            [(bar_x, first_main_top + 4), (bar_x, first_main_top + min(group_h, 40) - 4)],
+            fill=COLOR_LRC_DIVIDER, width=2,
+        )
+
+        # 绘制各行
+        text_x = bar_x + 14
+        prev_kind = None
+        for kind, text, base_h in rows:
+            if prev_kind is not None and prev_kind != kind:
+                y += LRC_INTER_GAP
+            if kind == "main":
+                wrapped = _wrap_text(draw, text, font_main, main_max_w - 66)
+                for line in wrapped:
+                    draw.text(
+                        (text_x, y),
+                        line, font=font_main, fill=COLOR_LRC_MAIN,
+                    )
+                    y += 30
+                if len(wrapped) > 1:
+                    y += LRC_INTRA_GAP * (len(wrapped) - 1)
+            elif kind == "trans":
+                wrapped = _wrap_text(draw, text, font_trans, trans_max_w - 66)
+                for line in wrapped:
+                    draw.text(
+                        (text_x + 8, y),
+                        line, font=font_trans, fill=COLOR_LRC_TRANS,
+                    )
+                    y += 24
+                if len(wrapped) > 1:
+                    y += LRC_INTRA_GAP * (len(wrapped) - 1)
+            elif kind == "roma":
+                wrapped = _wrap_text(draw, text, font_roma, roma_max_w - 66)
+                for line in wrapped:
+                    draw.text(
+                        (text_x + 8, y),
+                        line, font=font_roma, fill=COLOR_LRC_ROMA,
+                    )
+                    y += 22
+                if len(wrapped) > 1:
+                    y += LRC_INTRA_GAP * (len(wrapped) - 1)
+            prev_kind = kind
+
+        # 段间虚线（仅当前后都非 meta 且不是最后一段）
+        next_is_meta = False
+        if i < len(groups) - 1:
+            next_rows = _measure_lines(draw, groups[i + 1])
+            next_is_meta = len(next_rows) == 1 and next_rows[0][0] == "meta"
+        if i < len(groups) - 1 and not next_is_meta:
+            sep_y = y + LRC_GROUP_GAP // 2
+            # 居中点装饰（更优雅的段间分隔）
+            mid_x = LRC_IMG_WIDTH // 2
+            draw.line(
+                [(mid_x - 28, sep_y), (mid_x - 8, sep_y)],
+                fill=COLOR_LRC_DIVIDER, width=1,
+            )
+            draw.line(
+                [(mid_x + 8, sep_y), (mid_x + 28, sep_y)],
+                fill=COLOR_LRC_DIVIDER, width=1,
+            )
+            # 中间小菱形
+            draw.polygon(
+                [(mid_x, sep_y - 3), (mid_x + 3, sep_y), (mid_x, sep_y + 3), (mid_x - 3, sep_y)],
+                fill=COLOR_LRC_DIVIDER,
+            )
+            y += LRC_GROUP_GAP
+
+    # ===== 底栏 =====
+    footer_y = total_h - LRC_FOOTER_H
+    draw.line(
+        [(LRC_PADDING_X, footer_y), (LRC_IMG_WIDTH - LRC_PADDING_X, footer_y)],
+        fill=COLOR_LRC_DIVIDER, width=1,
+    )
+
+    meta_lines = [
+        text
+        for g in groups
+        for k, text in g.lrc.items()
+        if k == "meta" and ("贡献者" in text or "贡献" in text)
+    ]
+    if meta_lines:
+        meta_text = "  ·  ".join(meta_lines)
+        meta_bbox = draw.textbbox((0, 0), meta_text, font=font_meta)
+        if meta_bbox[2] - meta_bbox[0] > LRC_IMG_WIDTH - LRC_PADDING_X * 2 - 200:
+            meta_text = _truncate_text(
+                draw, meta_text, font_meta,
+                LRC_IMG_WIDTH - LRC_PADDING_X * 2 - 200,
+            )
+        draw.text(
+            (LRC_PADDING_X, footer_y + 10),
+            meta_text, font=font_meta, fill=COLOR_LRC_META,
+        )
+
+    footer_text = "astrbot-plugin-multincm"
+    fbbox = draw.textbbox((0, 0), footer_text, font=font_footer)
     fw = fbbox[2] - fbbox[0]
-    draw.text(((600 - fw) // 2, total_h - 30), footer_text, font=_get_font(12), fill=COLOR_FG_SEC)
+    draw.text(
+        (LRC_IMG_WIDTH - LRC_PADDING_X - fw, footer_y + 20),
+        footer_text, font=font_footer, fill=COLOR_LRC_META,
+    )
 
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
+
+
+def _format_time(ms: int) -> str:
+    """毫秒 → mm:ss（meta 行的 5940000 ms 不显示）"""
+    if ms >= 5940000:
+        return ""
+    s = ms // 1000
+    return f"{s // 60:02d}:{s % 60:02d}"

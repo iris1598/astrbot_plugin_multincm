@@ -407,10 +407,14 @@ class Main(Star):
                 return
 
             if isinstance(result, BaseSong):
-                # 选中歌曲 → 发送后退出会话
+                # 选中歌曲 → 根据会话 action 决定后续动作
                 del self.search_sessions[search_key]
-                async for r in self._send_song(event, result):
-                    yield r
+                if sess.action == "get_lyrics":
+                    async for r in self._send_lyric(event, result):
+                        yield r
+                else:
+                    async for r in self._send_song(event, result):
+                        yield r
                 return
             elif isinstance(result, BasePlaylist):
                 # 对于歌单/专辑/电台，进入子列表（会话保持）
@@ -618,32 +622,116 @@ class Main(Star):
 
     @filter.regex(r"^(歌词|lrc|lyric|lyrics)\s*(.*)$")
     async def handle_lyric(self, event: AstrMessageEvent):
-        """获取歌词"""
+        """获取歌词（支持链接 / 歌曲名 / 数字ID）"""
         match = re.match(r"^(歌词|lrc|lyric|lyrics)\s*(.*)$", event.message_str)
         if not match:
             return
         keyword = match.group(2).strip()
 
-        # 尝试从链接解析歌曲
+        # 1) 尝试从链接解析歌曲
         song = None
         if keyword:
             result = await self._resolve_from_text(keyword)
             if isinstance(result, BaseSong):
                 song = result
 
-        # 如果没有指定，尝试从最近搜索会话获取
-        if not song:
-            sess = self.search_sessions.get(self._get_search_key(event))
-            if sess and isinstance(sess.song_list, BaseSearcher):
-                yield event.plain_result("请先搜索歌曲或回复网易云链接获取歌词")
+        # 2) 没有链接时，尝试按歌曲名 / 数字 ID 搜索
+        if not song and keyword:
+            try:
+                searcher = SongSearcher(keyword)
+                result = await searcher.get_page()
+            except Exception as e:
+                logger.error(f"歌词搜索失败: {e}")
+                result = None
+
+            if isinstance(result, BaseSong):
+                # 唯一结果：直接使用
+                song = result
+            elif isinstance(result, BaseSongListPage):
+                # 多结果：进入选歌流程（action=get_lyrics）
+                async for r in self._start_lyric_selection(event, searcher, result, keyword):
+                    yield r
+                return
+            else:
+                # 没有结果
+                yield event.plain_result(f"未找到与「{keyword}」相关的歌曲")
                 return
 
+        # 3) 尝试从最近搜索会话推断（如果用户没传 keyword，且刚点过歌）
         if not song:
+            sess = self.search_sessions.get(self._get_search_key(event))
+            if sess:
+                yield event.plain_result(
+                    "请指定歌曲：歌词 [链接/歌名]\n"
+                    "提示：可输入「歌词 歌名」直接搜索"
+                )
+                return
             yield event.plain_result("请指定歌曲：歌词 [链接/歌名]")
             return
 
+        # 已有歌曲对象：直接发歌词
+        async for r in self._send_lyric(event, song):
+            yield r
+
+    async def _start_lyric_selection(
+        self,
+        event: AstrMessageEvent,
+        searcher: SongSearcher,
+        page: "GeneralSongListPage",
+        keyword: str,
+    ):
+        """为歌词搜索开启选歌流程。"""
         try:
-            lrc = await song.get_lyrics()
+            cards = await page.transform_to_list_cards()
+            img_bytes = await render_search_list(page, cards, limit=self.list_limit)
+        except Exception as e:
+            logger.error(f"渲染歌词搜索列表失败: {e}")
+            yield event.plain_result("图片渲染失败，请检查后台日志")
+            return
+
+        self._purge_expired_sessions()
+        self.search_sessions[self._get_search_key(event)] = SearchSession(
+            searcher=searcher,
+            song_list=page.father,
+            message_id=self._get_message_id(event),
+            action="get_lyrics",
+        )
+
+        info_text = (
+            f"🎤 歌词搜索: {keyword} | 回复序号选择\n"
+            f"上一页: P  |  下一页: N  |  跳页: P+数字  |  退出: E/0\n"
+            f"⏰ {self.session_timeout}秒无操作自动退出"
+        )
+        yield event.chain_result([
+            Comp.Plain(info_text),
+            Comp.Image.fromBytes(img_bytes),
+        ])
+
+    async def _send_lyric(self, event: AstrMessageEvent, song: BaseSong):
+        """发送歌词图片（含歌名标题）。
+
+        性能优化：只取歌词渲染需要的 name/alias/artists 字段，
+        跳过 get_info() 中的 get_url/get_cover_url/get_playable_url 三个网络请求。
+        name/alias/artists 都从 song.info（API 响应缓存）本地读取，零网络开销。
+        """
+        # 并发获取：①标题信息（从本地缓存读取，几乎瞬时） ②歌词（网络请求）
+        async def _get_title_info():
+            try:
+                name, alias, artists = await asyncio.gather(
+                    song.get_name(),
+                    song.get_alias(),
+                    song.get_artists(),
+                )
+                return format_alias(name, alias), artists
+            except Exception as e:
+                logger.debug(f"获取歌曲标题信息失败: {e}")
+                return None, None
+
+        try:
+            (display_name, artists), lrc = await asyncio.gather(
+                _get_title_info(),
+                song.get_lyrics(),
+            )
         except Exception as e:
             logger.error(f"获取歌词失败: {e}")
             yield event.plain_result("获取歌词失败")
@@ -653,8 +741,25 @@ class Main(Star):
             yield event.plain_result("该歌曲没有歌词")
             return
 
+        # 构造一个轻量 SongInfo 给渲染器（只填必要字段）
+        song_info = None
+        if display_name:
+            try:
+                song_info = SongInfo(
+                    father=song,
+                    name=display_name,
+                    alias=None,
+                    artists=artists or [],
+                    duration=0,
+                    url="",
+                    cover_url="",
+                    playable_url="",
+                )
+            except Exception as e:
+                logger.debug(f"构造 SongInfo 失败: {e}")
+
         try:
-            img_bytes = await render_lyrics(lrc)
+            img_bytes = await render_lyrics(lrc, info=song_info)
             yield event.chain_result([Comp.Image.fromBytes(img_bytes)])
         except Exception as e:
             logger.error(f"渲染歌词失败: {e}")
@@ -727,6 +832,11 @@ class Main(Star):
         if not self.auto_resolve:
             return
 
+        # 若消息以本插件的指令前缀开头（歌词/解析/直链/搜索等），
+        # 应由对应 handler 处理，避免被自动解析重复触发。
+        if self._is_plugin_command(event.message_str):
+            return
+
         result = await self._resolve_from_text(event.message_str)
         if not result:
             return
@@ -744,6 +854,27 @@ class Main(Star):
                 message_id=self._get_message_id(event),
             )
             # 无需启动等待会话：用户可直接回复序号 / 翻页指令
+
+    @staticmethod
+    def _is_plugin_command(text: str) -> bool:
+        """判断消息是否以本插件的指令前缀开头。
+
+        用于自动解析时排除已被其他 handler 接管的消息，
+        防止“歌词 https://163cn.tv/xxx”同时触发歌词和自动解析。
+        """
+        command_prefixes = (
+            r"点歌", r"网易云", r"wyy", r"网易点歌", r"wydg", r"wysong",
+            r"网易专辑", r"wyzj", r"wyal",
+            r"网易歌单", r"wygd", r"wypli",
+            r"网易声音", r"wysy", r"wyprog",
+            r"网易电台", r"wydt", r"wydj",
+            r"解析", r"resolve", r"parse", r"get",
+            r"歌词", r"lrc", r"lyric", r"lyrics",
+            r"直链", r"direct",
+            r"点歌帮助", r"ncm帮助", r"multincm帮助",
+        )
+        pattern = r"^(?:" + "|".join(command_prefixes) + r")\b"
+        return re.match(pattern, text.strip(), re.IGNORECASE) is not None
 
     # ==================== 内部工具 ====================
 
@@ -795,9 +926,12 @@ class SearchSession:
         searcher: BaseSearcher | None,
         song_list: GeneralSongList,
         message_id: str,
+        action: str = "select_song",
     ):
         self.searcher = searcher
         self.song_list = song_list
         self.message_id = message_id
+        self.action = action
+        """选中歌曲后的动作：select_song / get_lyrics"""
         self.last_active: float = time.time()
         """最近一次有效操作的 Unix 时间戳（用于超时清理）"""
