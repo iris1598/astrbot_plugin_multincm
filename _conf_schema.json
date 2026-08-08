@@ -35,6 +35,16 @@
         "default": 20,
         "hint": "设置为 1 则变为单选模式，默认 20（与原项目一致）"
     },
+    "render_theme": {
+        "description": "图片渲染主题",
+        "type": "string",
+        "default": "dark",
+        "options": [
+            "dark",
+            "light"
+        ],
+        "hint": "迁移自 astrbot_plugin_rika_share 的深色 / 浅色卡片风格"
+    },
     "session_timeout": {
         "description": "搜索交互会话超时时间（秒）",
         "type": "int",

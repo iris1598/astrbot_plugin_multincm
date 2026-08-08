@@ -6,7 +6,7 @@ AstrBot 网易云多选点歌插件，移植自 [nonebot-plugin-multincm](https:
 
 - 🎵 **多类型搜索**：支持搜索歌曲、专辑、歌单、电台节目、电台
 - 📄 **翻页选择**：搜索结果支持翻页、跳页、退出
-- 🎨 **精美图片**：使用 PIL 绘制暗色主题搜索列表与歌词图片
+- 🎨 **精美图片**：使用 PIL 绘制 rika_share 风格的深色 / 浅色搜索列表与歌词图片
 - 🔗 **链接解析**：支持解析网易云标准链接和 163cn.tv 短链接
 - 🎤 **音频发送**：自动下载音频并发送语音/文件
 - 📝 **歌词获取**：获取歌词并以图片形式发送
@@ -63,6 +63,7 @@ AstrBot 网易云多选点歌插件，移植自 [nonebot-plugin-multincm](https:
 | password | string | "" | 登录密码 |
 | anonymous | bool | false | 强制游客登录 |
 | list_limit | int | 10 | 每页搜索结果数量（设为1变为单选） |
+| render_theme | string | "dark" | 图片主题：`dark` 或 `light`（rika_share 卡片风格） |
 | send_as_file | bool | false | 以文件形式发送歌曲（而非语音） |
 | auto_resolve | bool | false | 自动解析网易云链接 |
 | ffmpeg_executable | string | "ffmpeg" | FFmpeg 路径 |
