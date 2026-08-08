@@ -204,8 +204,13 @@ async def render_search_list(page: "GeneralSongListPage", cards: list["ListPageC
     page_info = f"第 {page.father.current_page} / {page.father.max_page} 页   ·   共 {page.father.total_count} 项"
     info_font = _font(13, True)
     iw = draw.textbbox((0, 0), page_info, font=info_font)[2]
-    draw.rounded_rectangle((IMG_WIDTH - pad - iw - 24, 58, IMG_WIDTH - pad, 88), radius=15, fill=_with_alpha(accent, 48 if th is _THEMES["dark"] else 28), outline=_with_alpha(accent, 90), width=1)
-    _text(draw, (IMG_WIDTH - pad - iw - 12, 66), page_info, info_font, th.text)
+    pill_box = (IMG_WIDTH - pad - iw - 24, 58, IMG_WIDTH - pad, 88)
+    # 页数胶囊使用完全不透明底色，避免不同平台对半透明 PNG 的处理差异。
+    pill_bg = (70, 87, 126) if th is _THEMES["dark"] else (231, 237, 255)
+    pill_border = (132, 157, 215) if th is _THEMES["dark"] else (155, 181, 247)
+    pill_text = (255, 255, 255) if th is _THEMES["dark"] else (38, 65, 125)
+    draw.rounded_rectangle(pill_box, radius=15, fill=pill_bg, outline=pill_border, width=1)
+    _text(draw, (IMG_WIDTH - pad - iw - 12, 66), page_info, info_font, pill_text)
 
     covers = await asyncio.gather(*[_load_cover(c.cover, cover) for c in cards])
     y0 = pad + header_h
