@@ -39,11 +39,7 @@
         "description": "图片渲染主题",
         "type": "string",
         "default": "dark",
-        "options": [
-            "dark",
-            "light"
-        ],
-        "hint": "迁移自 astrbot_plugin_rika_share 的深色 / 浅色卡片风格"
+        "hint": "dark 为深海军蓝暗色，light 为干净近白亮色；两者均沿用 rika_share 的渐变、柔光和玻璃卡片风格"
     },
     "session_timeout": {
         "description": "搜索交互会话超时时间（秒）",

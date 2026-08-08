@@ -103,13 +103,12 @@ class Main(Star):
         # 合并配置
         self.cookie_music_u = self.config.get("cookie_music_u", schema_defaults.get("cookie_music_u", ""))
         self.list_limit = self.config.get("list_limit", schema_defaults.get("list_limit", 20))
-        self.render_theme = self.config.get("render_theme", schema_defaults.get("render_theme", "dark"))
-        if self.render_theme not in {"dark", "light"}:
-            logger.warning(f"未知图片渲染主题 {self.render_theme!r}，已回退为 dark")
-            self.render_theme = "dark"
         self.send_as_file = self.config.get("send_as_file", schema_defaults.get("send_as_file", False))
         self.auto_resolve = self.config.get("auto_resolve", schema_defaults.get("auto_resolve", False))
         self.ffmpeg_executable = self.config.get("ffmpeg_executable", schema_defaults.get("ffmpeg_executable", "ffmpeg"))
+        self.render_theme = self.config.get("render_theme", schema_defaults.get("render_theme", "dark"))
+        if self.render_theme not in ("dark", "light"):
+            self.render_theme = "dark"
 
         # 会话超时配置
         self.session_timeout = self.config.get("session_timeout", schema_defaults.get("session_timeout", 120))
@@ -121,10 +120,10 @@ class Main(Star):
         _config.update({
             "cookie_music_u": self.cookie_music_u,
             "list_limit": self.list_limit,
-            "render_theme": self.render_theme,
             "send_as_file": self.send_as_file,
             "auto_resolve": self.auto_resolve,
             "ffmpeg_executable": self.ffmpeg_executable,
+            "render_theme": self.render_theme,
             "session_timeout": self.session_timeout,
             "phone": self.config.get("phone", ""),
             "email": self.config.get("email", ""),
@@ -295,9 +294,7 @@ class Main(Star):
         # 渲染列表图片
         try:
             cards = await result.transform_to_list_cards()
-            img_bytes = await render_search_list(
-                result, cards, limit=self.list_limit, theme=self.render_theme,
-            )
+            img_bytes = await render_search_list(result, cards, limit=self.list_limit, theme=self.render_theme)
         except Exception as e:
             logger.error(f"渲染搜索列表失败: {e}")
             yield event.plain_result("图片渲染失败，请检查后台日志")
@@ -464,9 +461,7 @@ class Main(Star):
         if isinstance(result, BaseSongListPage):
             try:
                 cards = await result.transform_to_list_cards()
-                img_bytes = await render_search_list(
-                    result, cards, limit=self.list_limit, theme=self.render_theme,
-                )
+                img_bytes = await render_search_list(result, cards, limit=self.list_limit, theme=self.render_theme)
             except Exception as e:
                 logger.error(f"渲染列表失败: {e}")
                 yield event.plain_result("图片渲染失败")
@@ -692,9 +687,7 @@ class Main(Star):
         """为歌词搜索开启选歌流程。"""
         try:
             cards = await page.transform_to_list_cards()
-            img_bytes = await render_search_list(
-                page, cards, limit=self.list_limit, theme=self.render_theme,
-            )
+            img_bytes = await render_search_list(page, cards, limit=self.list_limit, theme=self.render_theme)
         except Exception as e:
             logger.error(f"渲染歌词搜索列表失败: {e}")
             yield event.plain_result("图片渲染失败，请检查后台日志")

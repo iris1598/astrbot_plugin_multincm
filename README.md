@@ -6,7 +6,7 @@ AstrBot 网易云多选点歌插件，移植自 [nonebot-plugin-multincm](https:
 
 - 🎵 **多类型搜索**：支持搜索歌曲、专辑、歌单、电台节目、电台
 - 📄 **翻页选择**：搜索结果支持翻页、跳页、退出
-- 🎨 **精美图片**：使用 PIL 绘制 rika_share 风格的深色 / 浅色搜索列表与歌词图片
+- 🎨 **双主题渲染**：使用 Pillow 绘制亮色/暗色搜索列表与歌词图片
 - 🔗 **链接解析**：支持解析网易云标准链接和 163cn.tv 短链接
 - 🎤 **音频发送**：自动下载音频并发送语音/文件
 - 📝 **歌词获取**：获取歌词并以图片形式发送
@@ -15,7 +15,7 @@ AstrBot 网易云多选点歌插件，移植自 [nonebot-plugin-multincm](https:
 ## 📦 安装
 
 1. 将插件文件夹放入 AstrBot 的 `data/plugins/` 目录
-2. 安装依赖：`pip install pyncm httpx Pillow pydantic cachetools`
+2. 在插件目录安装依赖：`pip install -r requirements.txt`
 3. 重启 AstrBot
 
 ## 🎯 使用方法
@@ -55,6 +55,13 @@ AstrBot 网易云多选点歌插件，移植自 [nonebot-plugin-multincm](https:
 
 ## ⚙️ 配置项
 
+图片渲染支持 `render_theme` 配置：
+
+- `dark`：深海军蓝渐变、品牌色柔光与暗色玻璃卡片（默认）
+- `light`：近白渐变、轻柔品牌色光晕与亮色玻璃卡片
+
+搜索列表与歌词图片会统一使用所选主题。
+
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | cookie_music_u | string | "" | 网易云 Cookie MUSIC_U 值 |
@@ -62,10 +69,12 @@ AstrBot 网易云多选点歌插件，移植自 [nonebot-plugin-multincm](https:
 | email | string | "" | 邮箱（用于登录） |
 | password | string | "" | 登录密码 |
 | anonymous | bool | false | 强制游客登录 |
-| list_limit | int | 10 | 每页搜索结果数量（设为1变为单选） |
-| render_theme | string | "dark" | 图片主题：`dark` 或 `light`（rika_share 卡片风格） |
+| list_limit | int | 20 | 每页搜索结果数量（设为 1 变为单选） |
+| render_theme | string | "dark" | 图片主题，可选 `dark` / `light` |
+| session_timeout | int | 120 | 搜索交互会话超时时间（秒） |
 | send_as_file | bool | false | 以文件形式发送歌曲（而非语音） |
 | auto_resolve | bool | false | 自动解析网易云链接 |
+| use_music_card | bool | false | 使用平台音乐卡片发送歌曲（需适配器支持） |
 | ffmpeg_executable | string | "ffmpeg" | FFmpeg 路径 |
 
 ### 登录配置说明
@@ -73,6 +82,20 @@ AstrBot 网易云多选点歌插件，移植自 [nonebot-plugin-multincm](https:
 - 推荐使用 Cookie 登录：登录网页版网易云音乐 → F12 打开开发者工具 → 在 Cookie 中找到 `MUSIC_U` 的值
 - 如果不配置登录信息，将使用游客模式（部分 VIP 歌曲无法播放）
 - 多种登录方式按优先级尝试：缓存 → Cookie → 手机号 → 邮箱 → 游客
+
+## 🖼️ 渲染预览
+
+### 搜索列表
+
+| 暗色 | 亮色 |
+|------|------|
+| ![暗色搜索列表](docs/previews/multincm-search-dark.png) | ![亮色搜索列表](docs/previews/multincm-search-light.png) |
+
+### 歌词
+
+| 暗色 | 亮色 |
+|------|------|
+| ![暗色歌词](docs/previews/multincm-lyrics-dark.png) | ![亮色歌词](docs/previews/multincm-lyrics-light.png) |
 
 ## 🏗️ 项目结构
 
@@ -85,6 +108,8 @@ astrbot_plugin_multincm/
 ├── data_source.py       # 搜索器与数据模型
 ├── login.py             # 网易云登录系统
 ├── renderer.py          # PIL 图片渲染
+├── scripts/             # 预览图生成脚本
+├── docs/previews/       # README 渲染预览
 ├── utils.py             # 通用工具函数
 ├── lrc_parser.py        # LRC 歌词解析器
 ├── metadata.yaml        # 插件元数据
@@ -99,7 +124,7 @@ astrbot_plugin_multincm/
 |------|-------------|-------------|
 | 渲染引擎 | Jinja2 + Playwright | PIL/Pillow |
 | 会话等待 | nonebot_plugin_waiter | 消息匹配（Reply/正则） |
-| 音乐卡片 | MusicShare / JSON 签名 | 降级为图文消息 |
+| 音乐卡片 | MusicShare / JSON 签名 | `Comp.Music`（由适配器签名） |
 | HTML 渲染 | Playwright 截图 | PIL 直接绘制 |
 | 依赖注入 | Depends() | 类实例属性 |
 | 配置系统 | .env + Pydantic | _conf_schema.json + dict |
