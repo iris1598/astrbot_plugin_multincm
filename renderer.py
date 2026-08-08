@@ -192,7 +192,8 @@ async def render_search_list(page: "GeneralSongListPage", cards: list["ListPageC
     cols = 2
     card_w = (IMG_WIDTH - pad * 2 - gap) // cols
     rows = max(1, (len(cards) + cols - 1) // cols)
-    header_h, footer_h = 146, 66
+    # 顶部信息区保持紧凑，避免操作提示与第一行歌曲之间出现大块留白。
+    header_h, footer_h = 116, 66
     height = pad + header_h + rows * card_h + (rows - 1) * gap + footer_h
     canvas, draw = _base(IMG_WIDTH, height, th)
     accent = th.accent
