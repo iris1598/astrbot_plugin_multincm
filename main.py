@@ -14,35 +14,33 @@ from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
 import astrbot.api.message_components as Comp
 
-from .data_source import (
+from .config import set_config
+from .netease import NCMResponseError
+from .render import render_lyrics, render_search_list
+from .search import (
+    AlbumSearcher,
     BasePlaylist,
     BaseSearcher,
     BaseSong,
     BaseSongListPage,
     GeneralGetPageReturn,
-    GeneralSongOrList,
-    GeneralSongOrPlaylist,
     GeneralSongList,
     GeneralSongListPage,
-    SongInfo,
+    GeneralSongOrList,
+    GeneralSongOrPlaylist,
     PlaylistInfo,
-    registered_searcher,
-    registered_song,
-    registered_playlist,
-    resolve_from_link_params,
-    Song,
-    SongSearcher,
-    AlbumSearcher,
     PlaylistSearcher,
     ProgramSearcher,
     RadioSearcher,
+    Song,
+    SongInfo,
+    SongSearcher,
+    registered_playlist,
+    registered_searcher,
+    registered_song,
+    resolve_from_link_params,
 )
-from .api import NCMResponseError
-from .renderer import render_search_list, render_lyrics
 from .utils import build_item_link, download_file, format_alias, safe_filename
-
-# 全局配置字典（供子模块读取）
-_config: dict = {}
 
 # 数据缓存目录
 _CACHE_DIR = Path.cwd() / "data" / "plugin_data" / "astrbot_plugin_multincm" / "songs"
@@ -84,10 +82,8 @@ class Main(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
 
-        # 加载配置
-        global _config
+        # 加载配置（由 config 模块集中管理，子模块不再反向依赖 main）
         self.config = config or {}
-        _config = self.config  # 设置全局配置供子模块使用
 
         # 读取 schema 默认值
         schema_path = os.path.join(os.path.dirname(__file__), "_conf_schema.json")
@@ -116,8 +112,8 @@ class Main(Star):
         # 音乐卡片配置（启用后使用 Comp.Music 组件发送，由适配的 OneBot 协议端自行签名）
         self.use_music_card = self.config.get("use_music_card", schema_defaults.get("use_music_card", False))
 
-        # 更新全局配置
-        _config.update({
+        # 注入统一配置
+        set_config({
             "cookie_music_u": self.cookie_music_u,
             "list_limit": self.list_limit,
             "send_as_file": self.send_as_file,
@@ -133,14 +129,29 @@ class Main(Star):
 
         # 搜索会话存储：{search_key: SearchSession}
         self.search_sessions: dict[str, "SearchSession"] = {}
+        self._login_task: asyncio.Task | None = None
 
-        # 登录
-        asyncio.create_task(self._do_login())
+    async def initialize(self):
+        """AstrBot 异步初始化：后台发起登录，不阻塞插件加载。"""
+        self._login_task = asyncio.create_task(self._do_login())
+
+    async def terminate(self):
+        """插件卸载/停用时取消登录任务，并释放异步会话连接池。"""
+        if self._login_task and not self._login_task.done():
+            self._login_task.cancel()
+            try:
+                await self._login_task
+            except asyncio.CancelledError:
+                pass
+        from .netease.session import aclose_session
+
+        await aclose_session()
 
     async def _do_login(self):
         """执行登录"""
         try:
-            from .login import login
+            from .netease.auth import login
+
             await login()
         except Exception as e:
             logger.error(f"网易云登录失败: {e}")

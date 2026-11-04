@@ -16,11 +16,12 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from astrbot.api import logger
 
 if TYPE_CHECKING:
-    from .data_source import GeneralSongListPage, ListPageCard, SongInfo
-    from .lrc_parser import NCMLrcGroupLine
+    from ..search.source import GeneralSongListPage, ListPageCard, SongInfo
+    from .lrc import NCMLrcGroupLine
 
 
-_FONT_DIR = Path(__file__).resolve().parent
+# 字体仍从插件根目录查找（允许把自定义字体放在插件根目录）
+_FONT_DIR = Path(__file__).resolve().parent.parent
 
 
 def _find_font(bold: bool = False) -> str | None:

@@ -21,7 +21,9 @@ if "astrbot" not in sys.modules:
     sys.modules["astrbot.api"] = api
 
 ROOT = Path(__file__).resolve().parent.parent
-spec = importlib.util.spec_from_file_location("multincm_renderer", ROOT / "renderer.py")
+spec = importlib.util.spec_from_file_location(
+    "multincm_renderer", ROOT / "render" / "image.py"
+)
 renderer = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = renderer
 spec.loader.exec_module(renderer)

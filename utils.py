@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from yarl import URL
 
+from .config import list_limit
+
 if TYPE_CHECKING:
     from . import models as md
 
@@ -45,40 +47,24 @@ def format_artists(artists: list["md.Artist"]) -> str:
 
 
 def calc_page_number(index: int) -> int:
-    try:
-        from .main import _config
-        limit = _config.get("list_limit", 20)
-    except Exception:
-        limit = 20
+    limit = list_limit()
     return (index // limit) + 1
 
 
 def calc_min_index(page: int) -> int:
-    try:
-        from .main import _config
-        limit = _config.get("list_limit", 20)
-    except Exception:
-        limit = 20
+    limit = list_limit()
     return (page - 1) * limit
 
 
 def calc_min_max_index(page: int) -> tuple[int, int]:
     min_index = calc_min_index(page)
-    try:
-        from .main import _config
-        limit = _config.get("list_limit", 20)
-    except Exception:
-        limit = 20
+    limit = list_limit()
     max_index = min_index + limit
     return min_index, max_index
 
 
 def calc_max_page(total: int) -> int:
-    try:
-        from .main import _config
-        limit = _config.get("list_limit", 20)
-    except Exception:
-        limit = 20
+    limit = list_limit()
     return math.ceil(total / limit)
 
 

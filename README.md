@@ -15,8 +15,10 @@ AstrBot 网易云多选点歌插件，移植自 [nonebot-plugin-multincm](https:
 ## 📦 安装
 
 1. 将插件文件夹放入 AstrBot 的 `data/plugins/` 目录
-2. 在插件目录安装依赖：`pip install -r requirements.txt`
+2. 在插件目录安装依赖：`pip install -r requirements.txt`（AstrBot 通常会自动安装）
 3. 重启 AstrBot
+
+> **零 API 依赖 / 全异步**：上游 pyncm 已从 PyPI / GitHub 下架。本插件不再依赖任何第三方网易云 SDK，所需能力（加解密、会话、请求、端点）已融合为项目自带的 `netease/` 客户端层。网络请求基于 `httpx.AsyncClient` 原生 `async/await`，不使用 `requests`、不占用线程池；插件初始化与销毁走 AstrBot 的 `initialize()` / `terminate()` 异步生命周期钩子。无需 `pip install pyncm`。
 
 ## 🎯 使用方法
 
@@ -101,22 +103,37 @@ AstrBot 网易云多选点歌插件，移植自 [nonebot-plugin-multincm](https:
 
 ```
 astrbot_plugin_multincm/
-├── __init__.py          # 插件入口
-├── main.py              # 主插件类（命令注册、交互逻辑）
-├── api.py               # pyncm API 请求封装
-├── models.py            # Pydantic 数据模型
-├── data_source.py       # 搜索器与数据模型
-├── login.py             # 网易云登录系统
-├── renderer.py          # PIL 图片渲染
-├── scripts/             # 预览图生成脚本
-├── docs/previews/       # README 渲染预览
-├── utils.py             # 通用工具函数
-├── lrc_parser.py        # LRC 歌词解析器
-├── metadata.yaml        # 插件元数据
-├── _conf_schema.json    # 配置 Schema
-├── requirements.txt     # 依赖列表
-└── README.md            # 本文件
+├── __init__.py              # 插件入口（导出 Main）
+├── main.py                  # Star 插件类：命令注册、交互、消息发送
+├── config.py                # 运行时配置中心（消除对 main 的反向依赖）
+├── models.py                # Pydantic 数据模型
+├── utils.py                 # 通用工具（分页、文件名、下载等）
+├── netease/                 # 内置网易云客户端（融合层，无第三方 SDK）
+│   ├── crypto.py            # EAPI/WEAPI 加密统一接口
+│   ├── _aes.py              # 纯 Python AES 原语（ricmoo/pyaes, MIT）
+│   ├── _security.py         # 游客登录 / abroad 响应算法
+│   ├── session.py           # httpx.AsyncClient 异步会话与登录态序列化
+│   ├── transport.py         # EAPI/WEAPI 异步请求装饰器
+│   ├── endpoints.py         # 本插件实际使用的协程端点
+│   ├── client.py            # 异步业务 API 门面（await + 模型转换）
+│   ├── auth.py              # 登录编排与会话缓存
+│   └── exceptions.py        # 统一异常
+├── search/                  # 搜索器与数据抽象层
+│   ├── __init__.py          # 公共导出
+│   └── source.py            # 翻页/选择/链接解析/各类型搜索器
+├── render/                  # 图片与歌词渲染
+│   ├── __init__.py          # 公共导出
+│   ├── image.py             # PIL 亮/暗主题渲染
+│   └── lrc.py               # LRC 歌词解析与归一化
+├── scripts/                 # 预览图生成脚本
+├── docs/previews/           # README 渲染预览
+├── metadata.yaml            # 插件元数据
+├── _conf_schema.json        # 配置 Schema
+├── requirements.txt         # 依赖列表
+└── README.md                # 本文件
 ```
+
+分层约定：`main` → `search` / `render` / `netease`，`config` / `models` / `utils` 为公共底层；子模块不得反向 import `main`。所有网络 IO 均为协程，调用方一律 `await`，禁止在事件循环中执行同步阻塞请求。
 
 ## 🔄 与 NoneBot 版本的差异
 
@@ -127,16 +144,19 @@ astrbot_plugin_multincm/
 | 音乐卡片 | MusicShare / JSON 签名 | `Comp.Music`（由适配器签名） |
 | HTML 渲染 | Playwright 截图 | PIL 直接绘制 |
 | 依赖注入 | Depends() | 类实例属性 |
-| 配置系统 | .env + Pydantic | _conf_schema.json + dict |
+| 配置系统 | .env + Pydantic | _conf_schema.json + config.py |
 | 音频转码 | silk-python (OB11) | 直接发送 MP3 |
 | 消息撤回 | RecallContext | 不支持 |
 
 ## 📄 许可证
 
-MIT License
+插件主体代码采用 MIT License。
+
+`netease/` 中的加解密算法与接口协议参考自 [pyncm](https://github.com/mos9527/pyncm) v1.8.1（上游已下架），版权归原作者 mos9527 及贡献者所有，许可条款沿用原项目 LICENSE；其中 `netease/_aes.py` 源自 [ricmoo/pyaes](https://github.com/ricmoo/pyaes)（MIT），原文件头的版权与许可声明已原样保留。该层已按本项目架构重写为自有模块，仅保留必要的算法实现。
 
 ## 🙏 致谢
 
 - [nonebot-plugin-multincm](https://github.com/lgc-NB2Dev/nonebot-plugin-multincm) - 原始 NoneBot 插件
-- [pyncm](https://github.com/mos9527/pyncm) - 网易云音乐 API 库
+- [pyncm](https://github.com/mos9527/pyncm) - 网易云音乐 API 协议与加密算法参考（v1.8.1）
+- [ricmoo/pyaes](https://github.com/ricmoo/pyaes) - 纯 Python AES 实现
 - [AstrBot](https://github.com/AstrBotDevs/AstrBot) - AstrBot 框架

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic, Literal, TypeAlias, TypeVar
 
 if TYPE_CHECKING:
-    from . import models as md
+    from .. import models as md
 
 SK = TypeVar("SK", bound=str)
 

@@ -8,7 +8,8 @@ from typing import Any, ClassVar, Generic, TypeVar, Union
 from typing_extensions import Self, override
 from yarl import URL
 
-from .api import (
+from .. import models as md
+from ..netease import (
     get_album_info,
     get_playlist_info,
     get_program_info,
@@ -23,9 +24,8 @@ from .api import (
     search_radio,
     search_song,
 )
-from . import models as md
-from .lrc_parser import NCMLrcGroupLine, normalize_lrc
-from .utils import (
+from ..render.lrc import NCMLrcGroupLine, normalize_lrc
+from ..utils import (
     FILESYSTEM_CHAR_REPLACEMENTS,
     build_item_link,
     calc_max_page,
@@ -339,12 +339,10 @@ class BaseSongList(ABC, Generic[_TRawResp, _TRawRespInner, _TSongOrList]):
         return 0 <= index < self.total_count
 
     async def get_page(self, page: int | None = None):
-        from .utils import calc_min_index as _calc_min
-        try:
-            from .main import _config
-            limit = _config.get("list_limit", 20)
-        except Exception:
-            limit = 20
+        from ..config import list_limit
+        from ..utils import calc_min_index as _calc_min
+
+        limit = list_limit()
 
         if page is None:
             page = self.current_page
@@ -932,9 +930,6 @@ class RadioSearcher(BaseSearcher[md.RadioSearchResult, md.RadioBaseInfo, Radio])
 
 
 def calc_page_number(index: int) -> int:
-    try:
-        from .main import _config
-        limit = _config.get("list_limit", 20)
-    except Exception:
-        limit = 20
-    return (index // limit) + 1
+    from ..config import list_limit
+
+    return (index // list_limit()) + 1
