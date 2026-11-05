@@ -77,7 +77,7 @@ SELECTION_REGEX = re.compile(
 )
 
 
-@register("multincm", "lgc-NB2Dev", "网易云多选点歌", "1.0.0", "https://github.com/lgc-NB2Dev/nonebot-plugin-multincm")
+@register("multincm", "lgc-NB2Dev", "网易云多选点歌", "v1.1.0", "https://github.com/lgc-NB2Dev/nonebot-plugin-multincm")
 class Main(Star):
     def __init__(self, context: Context, config: dict = None):
         super().__init__(context)
@@ -100,7 +100,6 @@ class Main(Star):
         self.cookie_music_u = self.config.get("cookie_music_u", schema_defaults.get("cookie_music_u", ""))
         self.list_limit = self.config.get("list_limit", schema_defaults.get("list_limit", 20))
         self.send_as_file = self.config.get("send_as_file", schema_defaults.get("send_as_file", False))
-        self.auto_resolve = self.config.get("auto_resolve", schema_defaults.get("auto_resolve", False))
         self.ffmpeg_executable = self.config.get("ffmpeg_executable", schema_defaults.get("ffmpeg_executable", "ffmpeg"))
         self.render_theme = self.config.get("render_theme", schema_defaults.get("render_theme", "dark"))
         if self.render_theme not in ("dark", "light"):
@@ -117,7 +116,6 @@ class Main(Star):
             "cookie_music_u": self.cookie_music_u,
             "list_limit": self.list_limit,
             "send_as_file": self.send_as_file,
-            "auto_resolve": self.auto_resolve,
             "ffmpeg_executable": self.ffmpeg_executable,
             "render_theme": self.render_theme,
             "session_timeout": self.session_timeout,
@@ -839,52 +837,6 @@ class Main(Star):
             "💡 输入音乐ID可直接发送对应音乐"
         )
         yield event.plain_result(help_text)
-
-    # ==================== 自动解析 ====================
-
-    @filter.regex(r".*(music\.163\.com|163cn\.tv)")
-    async def handle_auto_resolve(self, event: AstrMessageEvent):
-        """自动解析网易云链接（含短链接）"""
-        if not self.auto_resolve:
-            return
-
-        # 若消息以本插件的指令前缀开头（歌词/解析/直链/搜索等），
-        # 应由对应 handler 处理，避免被自动解析重复触发。
-        if self._is_plugin_command(event.message_str):
-            return
-
-        result = await self._resolve_from_text(event.message_str)
-        if not result:
-            return
-
-        if isinstance(result, BaseSong):
-            async for r in self._send_song(event, result):
-                yield r
-        elif isinstance(result, BasePlaylist):
-            info = await result.get_info()
-            desc = await info.get_description()
-            yield event.chain_result([Comp.Plain(f"📋 {desc}")])
-            self.search_sessions[self._get_search_key(event)] = SearchSession(
-                searcher=None,
-                song_list=result,
-                message_id=self._get_message_id(event),
-            )
-            # 无需启动等待会话：用户可直接回复序号 / 翻页指令
-
-    @staticmethod
-    def _is_plugin_command(text: str) -> bool:
-        """判断消息是否为本插件的指令。
-
-        用于自动解析时排除已被其他 handler 接管的消息，
-        防止“歌词 https://163cn.tv/xxx”同时触发歌词和自动解析。
-
-        与各 handler 的正则保持一致：带参数指令必须以
-        “指令名 + 空白 + 非空参数”的形式出现。
-        """
-        text = text.strip()
-        if text == "点歌帮助":
-            return True
-        return re.match(r"^(?:点歌|专辑|歌单|声音|电台|解析|歌词|直链)\s+\S", text) is not None
 
     # ==================== 内部工具 ====================
 

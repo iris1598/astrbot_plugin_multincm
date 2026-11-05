@@ -55,12 +55,6 @@
         "default": false,
         "hint": "开启后发送音频文件而非语音消息"
     },
-    "auto_resolve": {
-        "description": "自动解析网易云链接",
-        "type": "bool",
-        "default": false,
-        "hint": "开启后当用户发送网易云链接时会自动解析并发送歌曲"
-    },
     "use_music_card": {
         "description": "使用音乐卡片发送歌曲（仅支持 QQ 平台）",
         "type": "bool",

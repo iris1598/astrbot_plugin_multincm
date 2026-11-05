@@ -30,6 +30,19 @@ class Artist(BaseModel):
     alias: list[str] | None = None
 
 
+class ArtistDetail(BaseModel):
+    """艺术家详情（``/api/artist/head/info/get`` 的 ``data.artist``）。"""
+
+    model_config = ConfigDict(alias_generator=camel_case, populate_by_name=True)
+    id: int
+    name: str
+    avatar: str | None = None
+    """艺人头像（方图）"""
+    cover: str | None = None
+    """艺人页横幅图（头像缺失时的回退）"""
+    brief_desc: str | None = None
+
+
 class BaseAlbum(BaseModel):
     model_config = ConfigDict(alias_generator=camel_case, populate_by_name=True)
     id: int

@@ -1,7 +1,8 @@
 """本插件实际使用的网易云 API 端点。
 
 只保留多选点歌所需的搜索、歌曲、专辑、歌单、电台与登录接口；
-上游 pyncm 的下载 CLI、艺术家/用户/云盘/小程序等未使用接口已全部移除。
+上游 pyncm 的下载 CLI、用户/云盘/小程序等未使用接口已全部移除
+（艺术家详情仅保留头像所需的 ``artist_head_info`` 一项，见 :func:`artist_head_info`）。
 每个端点构造 ``(url, payload)``，由 :mod:`.transport` 异步加密并发出请求，
 因此所有装饰过的端点都是协程函数，调用时须 ``await``。
 """
@@ -23,6 +24,7 @@ from .transport import eapi_request, weapi_request
 __all__ = [
     "SearchType",
     "album_info",
+    "artist_head_info",
     "login_status",
     "login_via_anonymous",
     "login_via_cellphone",
@@ -127,6 +129,15 @@ def track_lyrics(song_id: str, lv: int = -1, tv: int = -1, rv: int = -1):
 def album_info(album_id: str):
     """获取专辑信息。"""
     return f"/weapi/v1/album/{album_id}", {}
+
+
+@weapi_request
+def artist_head_info(artist_id: str):
+    """获取艺术家详情（头像 / 简介 / 作品统计）。
+
+    端点与载荷取自 pyncm 的 ``GetArtistDetails``（apis/artist.py）。
+    """
+    return "/weapi/artist/head/info/get", {"id": str(artist_id)}
 
 
 @weapi_request

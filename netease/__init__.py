@@ -22,6 +22,7 @@ from __future__ import annotations
 from . import crypto, endpoints, session, transport
 from .client import (
     get_album_info,
+    get_artist_info,
     get_playlist_info,
     get_program_info,
     get_radio_info,
@@ -54,6 +55,7 @@ __all__ = [
     "crypto",
     "endpoints",
     "get_album_info",
+    "get_artist_info",
     "get_playlist_info",
     "get_program_info",
     "get_radio_info",

@@ -178,3 +178,8 @@ async def get_playlist_info(playlist_id: int) -> models.Playlist:
 async def get_album_info(album_id: int) -> models.AlbumInfo:
     res = await ncm_request(ep.album_info, str(album_id))
     return models.AlbumInfo(**res)
+
+
+async def get_artist_info(artist_id: int, **kwargs: Any) -> models.ArtistDetail:
+    res = await ncm_request(ep.artist_head_info, str(artist_id), **kwargs)
+    return models.ArtistDetail(**res["data"]["artist"])
