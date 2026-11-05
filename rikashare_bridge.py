@@ -95,6 +95,11 @@ class NeteaseParser(BaseParser):
     #: 生成内容标识（同一首歌的不同短链共用缓存）
     SHORT_LINK_KEYWORDS: ClassVar[tuple[str, ...]] = ("163cn.tv",)
 
+    #: 解析结果缓存有效期（秒）。网易云内容本身不变，但结果里烙有「音乐卡片 /
+    #: 音频可用性」这类随 multincm 设置与登录态变化的决策（开关改后、Cookie
+    #: 登录后都应生效），过期重解析让它们最多 5 分钟自动跟上，无需重启。
+    CACHE_TTL_SECONDS: ClassVar[int | None] = 300
+
     #: 本插件指令消息（参数里带网易云链接时）交给本插件的指令 handler，
     #: 莉卡侧静默让出，避免重复响应。与 main.py 各指令正则保持一致。
     _COMMAND_MESSAGE_RE: ClassVar[re.Pattern[str]] = re.compile(
@@ -186,8 +191,12 @@ class NeteaseParser(BaseParser):
         # 音乐卡片：按 multincm 的「使用音乐卡片」设置，QQ 系平台由莉卡发送
         # Comp.Music（type=163，协议端按歌曲 ID 自行签名），并整体替代卡片图 / 文本 / 语音。
         # 仅限歌曲（Song）：电台节目的 ID 不是歌曲 ID，163 卡片会取到错误内容。
-        if playable_url and _use_music_card() and isinstance(song, Song):
-            result.extra["music_card"] = {"type": "163", "id": song.id}
+        if playable_url and isinstance(song, Song):
+            if _use_music_card():
+                result.extra["music_card"] = {"type": "163", "id": song.id}
+                logger.info(f"[multincm] 歌曲将发送音乐卡片 (163) ID={song.id}")
+            else:
+                logger.debug("[multincm] use_music_card 未开启，歌曲以语音发送")
         return result
 
     async def _fetch_artist_avatar(self, song: Song) -> str | None:
