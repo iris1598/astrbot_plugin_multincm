@@ -537,7 +537,7 @@ class Song(BaseSong[md.Song]):
 @searcher
 class SongSearcher(BaseSearcher[md.SongSearchResult, md.Song, Song]):
     child_calling = Song.calling
-    commands = ("点歌", "网易云", "wyy", "网易点歌", "wydg", "wysong")
+    commands = ("点歌",)
 
     @staticmethod
     @override
@@ -629,7 +629,7 @@ class Album(BasePlaylist[md.AlbumInfo, list[md.Song], md.Song, Song]):
 @searcher
 class AlbumSearcher(BaseSearcher[md.AlbumSearchResult, md.Album, Album]):
     child_calling = Album.calling
-    commands = ("网易专辑", "wyzj", "wyal")
+    commands = ("专辑",)
 
     @staticmethod
     @override
@@ -720,7 +720,7 @@ class Playlist(BasePlaylist[md.Playlist, list[md.Song], md.Song, Song]):
 @searcher
 class PlaylistSearcher(BaseSearcher[md.PlaylistSearchResult, md.BasePlaylist, Playlist]):
     child_calling = Playlist.calling
-    commands = ("网易歌单", "wygd", "wypli")
+    commands = ("歌单",)
 
     @staticmethod
     @override
@@ -814,7 +814,7 @@ class Program(BaseSong[md.ProgramBaseInfo]):
 @searcher
 class ProgramSearcher(BaseSearcher[md.ProgramSearchResult, md.ProgramBaseInfo, Program]):
     child_calling = Program.calling
-    commands = ("网易声音", "wysy", "wyprog")
+    commands = ("声音",)
 
     @staticmethod
     @override
@@ -907,7 +907,7 @@ class Radio(BasePlaylist[md.Radio, md.RadioProgramList, md.ProgramBaseInfo, Prog
 @searcher
 class RadioSearcher(BaseSearcher[md.RadioSearchResult, md.RadioBaseInfo, Radio]):
     child_calling = Radio.calling
-    commands = ("网易电台", "wydt", "wydj")
+    commands = ("电台",)
 
     @staticmethod
     @override

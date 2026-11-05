@@ -207,10 +207,10 @@ class Main(Star):
 
     # ==================== 搜索命令 ====================
 
-    @filter.regex(r"^(点歌|网易云|wyy|网易点歌|wydg|wysong)\s*(.*)$")
+    @filter.regex(r"^(点歌)\s+(.+)$")
     async def search_song(self, event: AstrMessageEvent):
         """搜索歌曲"""
-        match = re.match(r"^(点歌|网易云|wyy|网易点歌|wydg|wysong)\s*(.*)$", event.message_str)
+        match = re.match(r"^(点歌)\s+(.+)$", event.message_str)
         if not match:
             return
         keyword = match.group(2).strip()
@@ -221,10 +221,10 @@ class Main(Star):
         async for result in self._handle_search(event, SongSearcher, keyword):
             yield result
 
-    @filter.regex(r"^(网易专辑|wyzj|wyal)\s*(.*)$")
+    @filter.regex(r"^(专辑)\s+(.+)$")
     async def search_album(self, event: AstrMessageEvent):
         """搜索专辑"""
-        match = re.match(r"^(网易专辑|wyzj|wyal)\s*(.*)$", event.message_str)
+        match = re.match(r"^(专辑)\s+(.+)$", event.message_str)
         if not match:
             return
         keyword = match.group(2).strip()
@@ -235,10 +235,10 @@ class Main(Star):
         async for result in self._handle_search(event, AlbumSearcher, keyword):
             yield result
 
-    @filter.regex(r"^(网易歌单|wygd|wypli)\s*(.*)$")
+    @filter.regex(r"^(歌单)\s+(.+)$")
     async def search_playlist(self, event: AstrMessageEvent):
         """搜索歌单"""
-        match = re.match(r"^(网易歌单|wygd|wypli)\s*(.*)$", event.message_str)
+        match = re.match(r"^(歌单)\s+(.+)$", event.message_str)
         if not match:
             return
         keyword = match.group(2).strip()
@@ -249,10 +249,10 @@ class Main(Star):
         async for result in self._handle_search(event, PlaylistSearcher, keyword):
             yield result
 
-    @filter.regex(r"^(网易声音|wysy|wyprog)\s*(.*)$")
+    @filter.regex(r"^(声音)\s+(.+)$")
     async def search_program(self, event: AstrMessageEvent):
         """搜索电台节目"""
-        match = re.match(r"^(网易声音|wysy|wyprog)\s*(.*)$", event.message_str)
+        match = re.match(r"^(声音)\s+(.+)$", event.message_str)
         if not match:
             return
         keyword = match.group(2).strip()
@@ -263,10 +263,10 @@ class Main(Star):
         async for result in self._handle_search(event, ProgramSearcher, keyword):
             yield result
 
-    @filter.regex(r"^(网易电台|wydt|wydj)\s*(.*)$")
+    @filter.regex(r"^(电台)\s+(.+)$")
     async def search_radio(self, event: AstrMessageEvent):
         """搜索电台"""
-        match = re.match(r"^(网易电台|wydt|wydj)\s*(.*)$", event.message_str)
+        match = re.match(r"^(电台)\s+(.+)$", event.message_str)
         if not match:
             return
         keyword = match.group(2).strip()
@@ -597,10 +597,10 @@ class Main(Star):
 
     # ==================== 链接解析 ====================
 
-    @filter.regex(r"^(解析|resolve|parse|get)\s*(.*)$")
+    @filter.regex(r"^(解析)\s+(.+)$")
     async def handle_resolve(self, event: AstrMessageEvent):
         """解析网易云链接"""
-        match = re.match(r"^(解析|resolve|parse|get)\s*(.*)$", event.message_str)
+        match = re.match(r"^(解析)\s+(.+)$", event.message_str)
         if not match:
             return
         keyword = match.group(2).strip()
@@ -635,10 +635,10 @@ class Main(Star):
 
     # ==================== 歌词 ====================
 
-    @filter.regex(r"^(歌词|lrc|lyric|lyrics)\s*(.*)$")
+    @filter.regex(r"^(歌词)\s+(.+)$")
     async def handle_lyric(self, event: AstrMessageEvent):
         """获取歌词（支持链接 / 歌曲名 / 数字ID）"""
-        match = re.match(r"^(歌词|lrc|lyric|lyrics)\s*(.*)$", event.message_str)
+        match = re.match(r"^(歌词)\s+(.+)$", event.message_str)
         if not match:
             return
         keyword = match.group(2).strip()
@@ -782,10 +782,10 @@ class Main(Star):
 
     # ==================== 直链 ====================
 
-    @filter.regex(r"^(直链|direct)\s*(.*)$")
+    @filter.regex(r"^(直链)\s+(.+)$")
     async def handle_direct(self, event: AstrMessageEvent):
         """获取播放直链"""
-        match = re.match(r"^(直链|direct)\s*(.*)$", event.message_str)
+        match = re.match(r"^(直链)\s+(.+)$", event.message_str)
         if not match:
             return
         keyword = match.group(2).strip()
@@ -813,17 +813,17 @@ class Main(Star):
 
     # ==================== 帮助 ====================
 
-    @filter.regex(r"^(点歌帮助|ncm帮助|multincm帮助)$")
+    @filter.regex(r"^点歌帮助$")
     async def handle_help(self, event: AstrMessageEvent):
         """显示帮助"""
         help_text = (
             "🎵 网易云多选点歌插件\n\n"
             "📌 搜索指令:\n"
             "  点歌 [歌名/ID] - 搜索歌曲\n"
-            "  网易专辑 [名/ID] - 搜索专辑\n"
-            "  网易歌单 [名/ID] - 搜索歌单\n"
-            "  网易声音 [名/ID] - 搜索电台节目\n"
-            "  网易电台 [名/ID] - 搜索电台\n\n"
+            "  专辑 [名/ID] - 搜索专辑\n"
+            "  歌单 [名/ID] - 搜索歌单\n"
+            "  声音 [名/ID] - 搜索电台节目\n"
+            "  电台 [名/ID] - 搜索电台\n\n"
             "📌 选择指令:\n"
             "  序号 - 选择对应项\n"
             "  P - 上一页 | N - 下一页\n"
@@ -834,6 +834,7 @@ class Main(Star):
             "  歌词 [链接] - 获取歌词\n"
             "  直链 [链接] - 获取播放直链\n\n"
             f"⏰ 搜索结果 {self.session_timeout} 秒无操作自动退出\n"
+            "💡 指令与参数之间需要用空格隔开，例如：点歌 Lemon\n"
             "💡 QQ 平台开启「使用音乐卡片」后可发送音乐卡片（由协议端内置签名服务处理）\n"
             "💡 输入音乐ID可直接发送对应音乐"
         )
@@ -872,24 +873,18 @@ class Main(Star):
 
     @staticmethod
     def _is_plugin_command(text: str) -> bool:
-        """判断消息是否以本插件的指令前缀开头。
+        """判断消息是否为本插件的指令。
 
         用于自动解析时排除已被其他 handler 接管的消息，
         防止“歌词 https://163cn.tv/xxx”同时触发歌词和自动解析。
+
+        与各 handler 的正则保持一致：带参数指令必须以
+        “指令名 + 空白 + 非空参数”的形式出现。
         """
-        command_prefixes = (
-            r"点歌", r"网易云", r"wyy", r"网易点歌", r"wydg", r"wysong",
-            r"网易专辑", r"wyzj", r"wyal",
-            r"网易歌单", r"wygd", r"wypli",
-            r"网易声音", r"wysy", r"wyprog",
-            r"网易电台", r"wydt", r"wydj",
-            r"解析", r"resolve", r"parse", r"get",
-            r"歌词", r"lrc", r"lyric", r"lyrics",
-            r"直链", r"direct",
-            r"点歌帮助", r"ncm帮助", r"multincm帮助",
-        )
-        pattern = r"^(?:" + "|".join(command_prefixes) + r")\b"
-        return re.match(pattern, text.strip(), re.IGNORECASE) is not None
+        text = text.strip()
+        if text == "点歌帮助":
+            return True
+        return re.match(r"^(?:点歌|专辑|歌单|声音|电台|解析|歌词|直链)\s+\S", text) is not None
 
     # ==================== 内部工具 ====================
 
