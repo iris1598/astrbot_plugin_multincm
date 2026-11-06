@@ -95,11 +95,6 @@ class NeteaseParser(BaseParser):
     #: 生成内容标识（同一首歌的不同短链共用缓存）
     SHORT_LINK_KEYWORDS: ClassVar[tuple[str, ...]] = ("163cn.tv",)
 
-    #: 解析结果缓存有效期（秒）。网易云内容本身不变，但结果里烙有「音乐卡片 /
-    #: 音频可用性」这类随 multincm 设置与登录态变化的决策（开关改后、Cookie
-    #: 登录后都应生效），过期重解析让它们最多 5 分钟自动跟上，无需重启。
-    CACHE_TTL_SECONDS: ClassVar[int | None] = 300
-
     #: 本插件指令消息（参数里带网易云链接时）交给本插件的指令 handler，
     #: 莉卡侧静默让出，避免重复响应。与 main.py 各指令正则保持一致。
     _COMMAND_MESSAGE_RE: ClassVar[re.Pattern[str]] = re.compile(
@@ -262,7 +257,8 @@ def _use_music_card() -> bool:
     """读 multincm 的「使用音乐卡片」开关。
 
     每次解析时现读（配置由 multincm 实例化时注入、原地更新）；
-    解析结果会被莉卡缓存复用，改动开关只对之后新解析的内容生效。
+    解析结果会被莉卡缓存复用，改动开关只对之后新解析的内容生效，
+    已缓存的内容需要莉卡的 /clear_cache 或重启才能刷新。
     """
     from .config import get_config
 

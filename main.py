@@ -116,6 +116,7 @@ class Main(Star):
             "cookie_music_u": self.cookie_music_u,
             "list_limit": self.list_limit,
             "send_as_file": self.send_as_file,
+            "use_music_card": self.use_music_card,
             "ffmpeg_executable": self.ffmpeg_executable,
             "render_theme": self.render_theme,
             "session_timeout": self.session_timeout,
