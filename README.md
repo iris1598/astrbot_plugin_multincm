@@ -58,8 +58,12 @@ AstrBot 网易云多选点歌插件，移植自 [nonebot-plugin-multincm](https:
 
 本插件**不再自动解析**聊天中出现的网易云链接。当已安装
 [astrbot_plugin_rika_share](https://github.com/iris1598/astrbot_plugin_rika_share)（莉卡解析）时，
-它会在启动时把本插件接入为一个「网易云音乐」解析器：用户发送网易云链接后由莉卡渲染分享卡片
-并单独发送音频，登录态（Cookie / 账号）复用本插件的配置；本插件未安装时莉卡侧没有这个解析器。
+它会在启动时自动发现本插件目录下的 `rikashare_bridge.py` 并调用其 `register(api)`，把本插件接入为
+一个「网易云音乐」解析器：用户发送网易云链接后由莉卡渲染分享卡片并单独发送音频，登录态（Cookie / 账号）
+复用本插件的配置；本插件未安装时莉卡侧没有这个解析器。
+
+桥接模块只依赖莉卡注入的 SDK 句柄（`api.parser(...)` / `@parser.handle(...)` / `parser.register()`），
+**不 import 莉卡的任何内部模块**，因此不会随莉卡的模块根或版本变化而失效。
 
 - 联动不影响本插件的任何指令（点歌 / 解析 / 歌词 / 直链等照常可用）；
 - 「解析 / 歌词 / 直链」等指令消息（参数里带链接时）由本插件响应，莉卡侧自动让出，不会重复回复；
@@ -121,7 +125,7 @@ AstrBot 网易云多选点歌插件，移植自 [nonebot-plugin-multincm](https:
 astrbot_plugin_multincm/
 ├── __init__.py              # 插件入口（导出 Main）
 ├── main.py                  # Star 插件类：命令注册、交互、消息发送
-├── rikashare_bridge.py      # 莉卡解析联动桥接（暴露网易云解析器供其注册）
+├── rikashare_bridge.py      # 莉卡解析联动桥接（register(api)：用莉卡注入的 SDK 注册网易云解析器）
 ├── config.py                # 运行时配置中心（消除对 main 的反向依赖）
 ├── models.py                # Pydantic 数据模型
 ├── utils.py                 # 通用工具（分页、文件名、下载等）
